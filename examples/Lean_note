@@ -1,0 +1,25 @@
+
+Every guardrails configuration must be stored in a folder. The standard folder structure is as follows:
+
+.
+├── config
+│   ├── actions.py
+│   ├── config.py
+│   ├── config.yml
+│   ├── rails.co
+│   ├── ...
+
+    Configuration Guide
+    A guardrails configuration includes the following:
+
+    config.yml: General Options: which LLM(s) to use, general instructions (similar to system prompts), 
+    sample conversation, which rails are active, specific rails configuration options, etc.; these options are typically placed in a config.yml file.
+
+    rails.co: Rails: Colang flows implementing the rails; these are typically placed in a rails folder.
+
+    actions.py: 存放自定义操作 Actions: custom actions implemented in Python; these are typically placed in an actions.py module in the root of the config or in an actions sub-package.
+
+    kb: Knowledge Base Documents: documents that can be used in a RAG (Retrieval-Augmented Generation) scenario using the built-in Knowledge Base support; 
+    these documents are typically placed in a kb folder.
+
+    Initialization Code: custom Python code performing additional initialization, e.g. registering a new type of LLM.
