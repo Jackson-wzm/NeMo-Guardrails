@@ -1,5 +1,8 @@
 import core
 import llm
 
+
+#LLM 调用
+#在 Colang 1.0 中，只要您定义了用户意图，对话栏就会自动激活并使用 LLM。在 Colang 2.0 中，要使用 LLM，您必须明确激活该机制：
 flow main
   activate llm continuation

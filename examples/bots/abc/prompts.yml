@@ -1,3 +1,19 @@
+'
+Prompt Customization 快速定制
+https://internal-docs.nemoguardrails.nvidia.com/nemo-guardrails/v0.11.0-rc3/user-guides/advanced/prompt-customization.html
+
+该工具包为每个任务和某些 LLM 模型提供了预定义提示。它们位于nemoguardrails/llm/prompts文件夹中。您可以通过在 guardrails 配置中包含文件来进一步自定义提示prompts.yml
+
+作为护栏流程一部分的最重要的任务包括:
+generate_user_intent:从原始话语生成规范的用户消息（例如，“你好” -> )；express greeting
+generate_next_steps:决定机器人应该说什么或者应该执行什么动作（例如，)，bot express greetingbot respond to question
+generate_bot_message:决定应该返回的确切机器人消息。
+general:根据用户和机器人消息的历史记录生成下一条机器人消息；当没有定义对话轨道（即没有用户消息规范形式)时使用此任务。
+
+'
+
+
+
 prompts:
   - task: self_check_input
     content: |

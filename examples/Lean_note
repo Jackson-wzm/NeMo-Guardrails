@@ -1,25 +1,174 @@
 
+
 Every guardrails configuration must be stored in a folder. The standard folder structure is as follows:
 
-.
+
+https://internal-docs.nemoguardrails.nvidia.com/nemo-guardrails/v0.11.0-rc3/getting-started/1-hello-world/README.html
+
+Step 1: create a new guardrails configuration
+
 ├── config
 │   ├── actions.py
 │   ├── config.py
 │   ├── config.yml
 │   ├── rails.co
+│   │   ├── file_1.co
+│   │   ├── file_2.co
 │   ├── ...
 
-    Configuration Guide
+    Configuration Guide: https://internal-docs.nemoguardrails.nvidia.com/nemo-guardrails/v0.11.0-rc3/user-guides/configuration-guide.html
     A guardrails configuration includes the following:
 
-    config.yml: General Options: which LLM(s) to use, general instructions (similar to system prompts), 
-    sample conversation, which rails are active, specific rails configuration options, etc.; these options are typically placed in a config.yml file.
+    config.yml: 常规配置,常规说明（类似于系统提示）、示例对话、哪些轨道处于活动状态、特定轨道配置选项
 
-    rails.co: Rails: Colang flows implementing the rails; these are typically placed in a rails folder.
+    rails.co: Rails: 实现轨道的 Colang 流程，定义用户和机器人的反馈
+    prompts.yml: 定义self_check_input and self_check_output 具体详细的内容
+    actions.py: 存放自定义操作 
 
-    actions.py: 存放自定义操作 Actions: custom actions implemented in Python; these are typically placed in an actions.py module in the root of the config or in an actions sub-package.
-
-    kb: Knowledge Base Documents: documents that can be used in a RAG (Retrieval-Augmented Generation) scenario using the built-in Knowledge Base support; 
-    these documents are typically placed in a kb folder.
+    kb: Knowledge Base Documents
 
     Initialization Code: custom Python code performing additional initialization, e.g. registering a new type of LLM.
+
+
+    
+
+    config.py
+        始化实例之前加载该模块LLMRails。
+        如果config.py模块包含init函数,则会在实例初始化过程中调用该函数LLMRails。例如,您可以使用该init函数初始化与数据库的连接,并使用以下register_action_param(...)函数将其注册为自定义操作参数:
+
+        from nemoguardrails import LLMRails
+        def init(app: LLMRails):
+            # Initialize the database connection
+            db = ...
+
+            # Register the action parameter
+            app.register_action_param("db", db)
+        自定义操作参数在调用自定义操作时被传递给自定义操作。
+
+    config.yml
+        models:
+            - type: main
+                engine: openai
+                model: gpt-3.5-turbo-instruct
+            
+            属性含义如下:
+            type:设置为“main”,表示主要 LLM 模型。
+            engine:LLM 提供者,例如openai,nvidia_ai_endpoints,huggingface_endpoint, Nvidia nim,anthropicanyscaleazurecoherehuggingface_endpointhuggingface_hubopenaiself_hostedself_hosted_hugging_face
+                支持：LLM Models，NIM for LLMs，NVIDIA AI Endpoints，NeMo LLM Service，TRT-LLM，
+            model:模型名称,例如gpt-3.5-turbo-instruct。
+            parameters:任何附加参数,例如temperature,,,top_k, link 等等 base_url: http://localhost:8000/v1
+
+
+    配置每个任务的 LLM 
+
+
+
+Step 2: load the guardrails configuration
+
+    要从路径加载护栏配置，您必须使用Python 代码中的方法创建一个RailsConfig实例：from_path
+    from nemoguardrails import RailsConfig
+    config = RailsConfig.from_path("./config")
+
+
+
+
+Step 3: use the guardrails configuration
+
+Use this empty configuration by creating an LLMRails instance and using the generate_async method in your Python code:
+
+from nemoguardrails import LLMRails
+
+rails = LLMRails(config)
+
+response = rails.generate(messages=[{
+    "role": "user",
+    "content": "Hello!"
+}])
+print(response)
+
+
+Step 4: add your first guardrail
+
+定义用户表达问候
+
+
+# config.yml  常见结构
+instructions:
+  - type: general
+    content: |
+      
+sample_conversation: |
+  
+models:
+  - type: main
+    engine: openai
+    model: gpt-3.5-turbo-instruct
+
+rails:
+  input:
+    flows:
+      - self check input
+
+  output:
+    flows:
+      - self check output
+
+  dialog:
+    single_call:
+      enabled: False
+
+
+总结：
+config.yml 配置'General 一般说明: 配置机器人的一般说明。您可以将其视为系统提示'
+config.yml 配置'sample_conversation 对话示例：影响 LLM 如何响应示例对话。示例对话为用户和机器人之间的对话定下了基调。示例对话包含在提示中，将在后续部分中显示'
+Rails：
+    Input Rails： The self-check input rail needs a prompt 文件来定义具体check 的内容, Add the following content to prompts.yml to create a prompt for the self-check input task
+    output rail：The self-check output rail needs a prompt to perform the check. 还可以定义Custom Output Rail，using config/actions.py file
+    Dialog rails: 为想要允许/避免的主题设计明确的对话轨道. config/rails/disallowed_topics.co: 何使用对话栏引导机器人避开特定主题，同时允许其对所需主题做出响应
+知识库直接配置到护栏配置
+    三种方式将知识库直接配置到护栏配置中：
+    使用kb文件夹。
+    使用自定义retrieve_relevant_chunks操作。
+    使用自定义的EmbeddingSearchProvider
+
+
+
+
+常见操作
+
+Let’s check the colang history:
+info = rails.explain()
+print(info.colang_history)
+
+And the LLM calls:
+info.print_llm_calls_summary()
+    Summary: 3 LLM call(s) took 1.79 seconds and used 1374 tokens.
+
+    1. Task `generate_user_intent` took 0.63 seconds and used 546 tokens.
+    2. Task `generate_next_steps` took 0.64 seconds and used 216 tokens.
+    3. Task `generate_bot_message` took 0.53 seconds and used 612 tokens.
+
+
+
+
+什么是 Colang？
+Colang 是一种用于对话应用程序的建模语言。使用 Colang 来设计用户和机器人之间的对话方式。
+核心概念
+在 Colang 中，两个核心概念是 messages 和 flows
+与1.0 相比变化内容
+    每一段 Colang 代码都称为一个脚本。
+    单个.co文件称为一个模块。
+    Colang 文件的文件夹（可能带有子文件夹）称为包。
+    可以导入模块和包。
+
+Syntax Changes
+    Dropping the define, execute keywords. 不再支持
+    Adding the flow, match, send, start, await, activate keywords.
+    Support for decorators.
+    when/or when instead of when/else when.
+    Dropped subflows.
+
+
+
+
+

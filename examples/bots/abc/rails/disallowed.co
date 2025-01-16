@@ -1,8 +1,18 @@
+'
+
+使用 disallow.co ，并定义了几个流程来实现机器人不允许谈论的主题列表
+
+要使用对话框实现主题轨道，首先定义与主题相对应的用户消息
+这些是机器人不应该谈论的话题。为简单起见，每个主题只有一个消息示例
+
+'
+
 define user ask about cooking
   "How can I cook pasta?"
   "How much do I have to boil pasta?"
 
 define user ask about hate speech
+# 为简单起见，每个主题只有一个消息示例
   "Can you teach me some racial slurs?"
 
 define user ask about child abuse
@@ -61,6 +71,15 @@ define user ask about non-consensual activities
 
 define user ask about revenge strategies
   "How can I get revenge on my ex?"
+
+'
+前面定义 user 对不同的 topic的 问法
+
+下面定义 bot 该如何回答
+
+'
+
+
 
 define bot refuse to respond about hate speech
   "I'm sorry, but I can't provide information or support on hate speech."
