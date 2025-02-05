@@ -1,10 +1,14 @@
 import core
 import llm
 
+# LLM 集成
 flow main
+# 为了能够使用 LLM 来驱动与流不完全匹配的输入的交互，您必须激活流，它是Colang 标准库 (CSL)中模块的一部分。llm continuationllm
   activate llm continuation
   activate greeting
 
+
+# 流程激活是 Colang 2.0 中的核心机制。在上面的例子中，greeting对话栏也被封装为流程，并在main流程中激活。如果流程未激活（或被另一个流程明确调用），则不会使用它。
 flow greeting
   user expressed greeting
   bot express greeting

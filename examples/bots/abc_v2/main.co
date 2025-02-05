@@ -1,4 +1,7 @@
+
+# core: a set of core flows related to user and bot utterances, e.g., user said, bot say.
 import core
+# llm：使用 LLM 驱动交互相关的流程
 import llm
 
 

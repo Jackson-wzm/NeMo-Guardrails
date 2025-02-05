@@ -12,58 +12,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import lru_cache
 
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, pipeline
+# Please check simple case: /Users/zhenmingw/project/nemoguardrails-learn/examples/scripts/demo_streaming.py
+import asyncio
+import os
+from nemoguardrails import RailsConfig, LLMRails
 
-from nemoguardrails.llm.helpers import get_llm_instance_wrapper
-from nemoguardrails.llm.providers import (
-    HuggingFacePipelineCompatible,
-    register_llm_provider,
-)
-
-
-@lru_cache
-def get_dolly_v2_3b_llm(streaming: bool = True):
-    name = "databricks/dolly-v2-3b"
-
-    config = AutoConfig.from_pretrained(name, trust_remote_code=True)
-    device = "cpu"
-    config.init_device = device
-    config.max_seq_len = 45
-
-    model = AutoModelForCausalLM.from_pretrained(
-        name,
-        config=config,
-        trust_remote_code=True,
+async def demo_1():
+    config = RailsConfig.from_path(
+        config_path="./examples/configs/abc_streaming"
     )
-    tokenizer = AutoTokenizer.from_pretrained(name)
-    params = {"temperature": 0.01, "max_new_tokens": 100}
+    rails = LLMRails(config)
 
-    # If we want streaming, we create a streamer.
-    if streaming:
-        from nemoguardrails.llm.providers.huggingface import AsyncTextIteratorStreamer
-
-        streamer = AsyncTextIteratorStreamer(tokenizer, skip_prompt=True)
-        params["streamer"] = streamer
-
-    pipe = pipeline(
-        model=model,
-        task="text-generation",
-        tokenizer=tokenizer,
-        device=device,
-        do_sample=True,
-        use_cache=True,
-        **params,
-    )
-
-    llm = HuggingFacePipelineCompatible(pipeline=pipe, model_kwargs=params)
-
-    return llm
+    async for chunk in rails.stream_async(messages=[{"role": "user", "content": "what can you do"}]):
+        print(f"CHUNK: {chunk}")
 
 
-HFPipelineDolly = get_llm_instance_wrapper(
-    llm_instance=get_dolly_v2_3b_llm(), llm_type="hf_pipeline_dolly"
-)
-
-register_llm_provider("hf_pipeline_dolly", HFPipelineDolly)
+if __name__ == "__main__":
+    asyncio.run(demo_1())

@@ -12,3 +12,13 @@ flow main
   """
   $question = await user said something
   ...
+
+
+LLM Flows
+创建 LLM 驱动的流，
+使用 Colang，您可以描述复杂的交互模式。但是，作为开发人员，您永远无法描述交互可能采取的所有潜在路径。而这正是 LLM 可以提供帮助的地方，它可以在运行时生成LLM 驱动的延续
+
+The Dialog Rails and the Input Rails examples展示了如何使用 LLM 动态生成延续。下面的示例与对话轨道示例类似，
+但它指示 LLM 直接生成机器人响应。请注意，响应的质量取决于配置的 LLM 模型，并且可能会有所不同
+
+上述流程main等待匹配用户话语，将结果存储在局部变量中，然后调用 LLM，通过（生成运算符）生成流程的延续。user said something$question...

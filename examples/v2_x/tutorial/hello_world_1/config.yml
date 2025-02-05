@@ -1,6 +1,7 @@
+#上述配置将 Colang 版本设置为“2.x”（这是必需的，因为“1.0”目前是默认值）
 colang_version: "2.x"
 
 models:
-  - type: main
-    engine: openai
+  - type: main  # Colang 脚本的入口点是流程main
+    engine: openai  # 并将 LLM 引擎设置为 OpenAI
     model: gpt-3.5-turbo-instruct

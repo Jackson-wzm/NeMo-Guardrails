@@ -30,3 +30,14 @@ flow user expressed goodbye
 flow bot inform about service
   bot say "You can ask me anything!"
     or bot say "Just ask me something!"
+
+
+Interaction Loop: 交互循环
+在各种基于 LLM 的应用中，LLM 需要以连续的交互循环与用户保持交互。
+下面的示例展示了如何使用while构造实现简单的交互循环，以及当用户保持沉默时机器人如何主动
+
+main上述流程激活了使用LLM 生成用户消息（又称用户意图）规范形式的模块中的流程。
+此外，当 LLM 生成 Colang 脚本未处理的意图时，将触发该流程（第 11 行）。generating user intent for unhandled user utteranceavatarsunhandled user intent
+
+上面例子中的第 14 行展示了如何使用预定义事件来模拟时间驱动的交互。user silent
+此示例还使用了when/语法，这是一种在多条路径上分支流程的机制。当流程到达分支点时，它将开始监视所有分支，并在分支匹配后立即继续交互。or when

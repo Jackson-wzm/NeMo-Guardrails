@@ -1,3 +1,12 @@
+Dialog Rails
+
+对话轨道是一种轨道，用于强制执行用户和机器人之间的对话路径。通常，它们涉及三个组件：
+1. 用户消息的定义，包括规范形式（例如）和潜在的话语。user expressed greeting
+2. 机器人消息的定义，包括规范形式（例如）和潜在的话语。bot express greeting
+3. 连接用户消息和机器人消息的流的定义。
+
+
+
 import core
 
 flow main
@@ -5,6 +14,7 @@ flow main
   bot express greeting
 
 flow user expressed greeting
+# 只适用于精确的输入“hi”和“hello”
   user said "hi" or user said "hello"
 
 flow bot express greeting

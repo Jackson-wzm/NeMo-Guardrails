@@ -1,3 +1,21 @@
+与1.0 相比变化内容
+    每一段 Colang 代码都称为一个脚本。
+    单个.co文件称为一个模块。
+    Colang 文件的文件夹（可能带有子文件夹）称为包。
+    可以导入模块和包。
+
+Syntax Changes
+    Dropping the define, execute keywords. 不再支持
+    Adding the flow, match, send, start, await, activate keywords.
+    Support for decorators.
+    when/or when instead of when/else when.
+    Dropped subflows.
+
+
+
+
+
+#'General 一般说明: 配置机器人的一般说明。您可以将其视为系统提示'
 instructions:
   - type: general
     content: |
@@ -6,6 +24,7 @@ instructions:
       The bot is knowledgeable about the employee handbook and company policies.
       If the bot does not know the answer to a question, it truthfully says it does not know.
 
+#'sample_conversation 对话示例：影响 LLM 如何响应示例对话。示例对话为用户和机器人之间的对话定下了基调。示例对话包含在提示中，将在后续部分中显示'
 sample_conversation: |
   user action: user said "Hi there. Can you help me with some questions I have about the company?"
   user intent: user express greeting and ask for assistance
@@ -17,14 +36,39 @@ sample_conversation: |
   bot action: bot say "The ABC Company provides eligible employees with up to two weeks of paid vacation time per year, as well as five paid sick days per year. Please refer to the employee handbook for more information."
 
 
+'
+models文件中的键配置了 LLM 模型。有关受支持的 LLM 模型的完整列表
+属性含义如下:
+type:设置为“main”,表示主要 LLM 模型。
+engine:LLM 提供者,例如openai,nvidia_ai_endpoints,huggingface_endpoint, Nvidia nim,anthropicanyscaleazurecoherehuggingface_endpointhuggingface_hubopenaiself_hostedself_hosted_hugging_face
+    支持：LLM Models，NIM for LLMs，NVIDIA AI Endpoints，NeMo LLM Service，TRT-LLM，
+model:模型名称,例如gpt-3.5-turbo-instruct。
+parameters:任何附加参数,例如temperature,,,top_k, link 等等 base_url: http://localhost:8000/v1
+
+'
+
 models:
   - type: main
     engine: openai
     model: gpt-3.5-turbo-instruct
 
 rails:
+  '
+  注意 这里去掉了   self check input  和 self check output
+  input: # 配置输入轨道
+    flows: # 流定义 
+      - self check input  #  实现自检输入检查  的预定义流程的名称， 需要在 prompts.yml 创建对应的 task来规定具体的 内容
+
+  output: # 配置输出轨道
+    flows: # 流定义 
+      - self check output #  实现自检输出检查  的预定义流程的名称 需要在 prompts.yml 创建对应的 task来规定具体的 内容
+  
+  '  
+  
+  # 为想要允许/避免的主题设计明确的对话轨道. config/rails/disallowed_topics.co: 何使用对话栏引导机器人避开特定主题，同时允许其对所需主题做出响应
   dialog:
     single_call:
       enabled: False
 
+# 注明 colang 的版本
 colang_version: "2.x"

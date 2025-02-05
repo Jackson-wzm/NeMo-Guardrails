@@ -54,7 +54,7 @@ Step 1: create a new guardrails configuration
             属性含义如下:
             type:设置为“main”,表示主要 LLM 模型。
             engine:LLM 提供者,例如openai,nvidia_ai_endpoints,huggingface_endpoint, Nvidia nim,anthropicanyscaleazurecoherehuggingface_endpointhuggingface_hubopenaiself_hostedself_hosted_hugging_face
-                支持：LLM Models，NIM for LLMs，NVIDIA AI Endpoints，NeMo LLM Service，TRT-LLM，
+                支持:LLM Models，NIM for LLMs，NVIDIA AI Endpoints，NeMo LLM Service，TRT-LLM，
             model:模型名称,例如gpt-3.5-turbo-instruct。
             parameters:任何附加参数,例如temperature,,,top_k, link 等等 base_url: http://localhost:8000/v1
 
@@ -65,7 +65,7 @@ Step 1: create a new guardrails configuration
 
 Step 2: load the guardrails configuration
 
-    要从路径加载护栏配置，您必须使用Python 代码中的方法创建一个RailsConfig实例：from_path
+    要从路径加载护栏配置，您必须使用Python 代码中的方法创建一个RailsConfig实例:from_path
     from nemoguardrails import RailsConfig
     config = RailsConfig.from_path("./config")
 
@@ -118,15 +118,27 @@ rails:
       enabled: False
 
 
-总结：
+Dialog Rails: https://internal-docs.nemoguardrails.nvidia.com/nemo-guardrails/v0.11.0-rc3/colang-2/getting-started/dialog-rails.html
+
+Dialog Rails: 对话轨道
+    对话轨道是一种轨道，用于强制执行用户和机器人之间的对话路径。
+    通常，它们涉及三个组件：
+    用户消息 的定义，包括规范形式（例如）和潜在的话语。user expressed greeting
+    机器人消息 的定义，包括规范形式（例如）和潜在的话语。bot express greeting
+    连接用户消息和机器人消息的流的定义
+
+
+
+
+总结:
 config.yml 配置'General 一般说明: 配置机器人的一般说明。您可以将其视为系统提示'
-config.yml 配置'sample_conversation 对话示例：影响 LLM 如何响应示例对话。示例对话为用户和机器人之间的对话定下了基调。示例对话包含在提示中，将在后续部分中显示'
-Rails：
-    Input Rails： The self-check input rail needs a prompt 文件来定义具体check 的内容, Add the following content to prompts.yml to create a prompt for the self-check input task
-    output rail：The self-check output rail needs a prompt to perform the check. 还可以定义Custom Output Rail，using config/actions.py file
+config.yml 配置'sample_conversation 对话示例:影响 LLM 如何响应示例对话。示例对话为用户和机器人之间的对话定下了基调。示例对话包含在提示中，将在后续部分中显示'
+Rails:
+    Input Rails: The self-check input rail needs a prompt 文件来定义具体check 的内容, Add the following content to prompts.yml to create a prompt for the self-check input task
+    output rail:The self-check output rail needs a prompt to perform the check. 还可以定义Custom Output Rail，using config/actions.py file
     Dialog rails: 为想要允许/避免的主题设计明确的对话轨道. config/rails/disallowed_topics.co: 何使用对话栏引导机器人避开特定主题，同时允许其对所需主题做出响应
 知识库直接配置到护栏配置
-    三种方式将知识库直接配置到护栏配置中：
+    三种方式将知识库直接配置到护栏配置中:
     使用kb文件夹。
     使用自定义retrieve_relevant_chunks操作。
     使用自定义的EmbeddingSearchProvider
@@ -167,6 +179,17 @@ Syntax Changes
     Support for decorators.
     when/or when instead of when/else when.
     Dropped subflows.
+
+
+
+进阶指导： https://internal-docs.nemoguardrails.nvidia.com/nemo-guardrails/v0.11.0-rc3/colang-2/language-reference/index.html
+
+
+#################
+## User Guides ##
+#################
+
+https://internal-docs.nemoguardrails.nvidia.com/nemo-guardrails/v0.11.0-rc3/user-guides/configuration-guide.html
 
 
 

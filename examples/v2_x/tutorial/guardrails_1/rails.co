@@ -1,5 +1,20 @@
+
+'Input Rails:
+输入轨道是一种在进行任何进一步处理之前检查来自用户的输入（即用户所说的内容）的轨道。
+
+要激活 Colang 2.0 中的输入轨，您必须：
+从Colang 标准库（CSL）导入护栏模块。
+
+定义一个名为input rails的流，它采用一个名为$input_text 的参数。
+
+
+
+'
+
+
+
 import core
-import guardrails
+import guardrails  # 从Colang 标准库（CSL）导入护栏模块。
 import llm
 
 flow main
@@ -16,6 +31,14 @@ flow user expressed greeting
 flow bot express greeting
   bot say "Hello world!"
 
+# 定义一个名为input rails的流，它采用一个名为$input_text 的参数。
+引入了一些额外的语法元素：input rails
+流参数和变量，以$符号开头，例如$input_text。$input_safe
+使用await操作符等待另一个流程。
+使用局部变量捕获流的返回值，例如。$input_safe = await check user utterance $input_text
+使用if类似于Python。
+使用abort关键字使流程失败，而不是成功完成
+
 flow input rails $input_text
   $input_safe = await check user utterance $input_text
 
@@ -23,6 +46,9 @@ flow input rails $input_text
     bot say "I'm sorry, I can't respond to that."
     abort
 
+
+# 引入了指令运算符，它将提示 llm根据评估的用户话语的安全性生成值或。
+# 在第 28 行中，将返回分配给的生成值。check user utterance i"<instruction>""TrueFalse$is_safe
 flow check user utterance $input_text -> $input_safe
   $is_safe = ..."Consider the following user utterance: '{$input_text}'. Assign 'True' if appropriate, 'False' if inappropriate."
   print $is_safe

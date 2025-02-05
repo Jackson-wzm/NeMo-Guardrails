@@ -1,5 +1,8 @@
+# 这两个流位于core模块中，包含在 Colang 标准库中，默认情况下可用（类似于 Python 标准库）。import开头的语句从模块导入所有流core
 import core
-
+# Colang 脚本的入口点是流程main。在下面的示例中，main流程正在等待用户说“嗨”，并指示机器人回复“Hello World！”
 flow main
+  # user said：当用户说了某句话时，就会触发此流程。
   user said "hi"
+  # bot say：此流程指示机器人说出特定的消息。
   bot say "Hello World!"

@@ -1,3 +1,7 @@
+
+Multimodal rails：多式联运轨道是一种考虑多种输入/输出模式（例如文本、语音、手势、姿势、图像）的轨道，该模块具有多模式事件和动作流程，以实现交互式化身用例。
+
+
 import core
 import avatars
 
@@ -7,6 +11,7 @@ flow main
 
 flow user expressed greeting
   user expressed verbal greeting
+  # 第 9 行和第 17 行使用预定义流程，并与用户手势和控制机器人手势相匹配。user gesturedbot gesture
     or user gestured "Greeting gesture"
 
 flow user expressed verbal greeting
@@ -15,6 +20,7 @@ flow user expressed verbal greeting
 
 flow bot express greeting
   bot express verbal greeting
+  # 第 9 行和第 17 行使用预定义流程，并与用户手势和控制机器人手势相匹配。user gesturedbot gesture
     and bot gesture "Smile and wave with one hand."
 
 flow bot express verbal greeting

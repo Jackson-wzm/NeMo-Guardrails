@@ -1,5 +1,7 @@
 
 # colang 2.0 中 去掉 define
+# The special define user ... and define bot ... syntax is no longer supported.
+
 flow user ask about cooking
   user said "How can I cook pasta?"
   or user said "How much do I have to boil pasta?"
