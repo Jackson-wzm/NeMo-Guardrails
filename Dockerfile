@@ -57,3 +57,11 @@ RUN poetry install --all-extras --no-interaction --no-ansi
 
 ENTRYPOINT ["poetry", "run", "nemoguardrails"]
 CMD ["server", "--verbose", "--config=/config"]
+
+# 第二种 bash 模式
+# ENTRYPOINT ["/usr/local/bin/nemoguardrails"]
+# CMD ["server", "--verbose", "--config=/config", "bash"]
+# 设置默认的shell为/bin/bash
+CMD ["/bin/bash"]
+# 可选:设置环境变量,虽然这里并不需要特别设置PATH,因为bash默认在/bin下
+ENV PATH=/bin:/usr/bin:$PATH
