@@ -73,7 +73,7 @@ sample_conversation: |
 
 ## Testing without Input Rails
 
-To test the bot, provide it with a greeting similar to the following:
+To test the bot, provide it with a greeting 问候 similar to the following:
 
 ```python
 from nemoguardrails import RailsConfig, LLMRails
@@ -133,7 +133,7 @@ As expected, the LLM is prompted with the general instructions and the user's in
 
 ## Jailbreak Attempts
 
-In LLMs, *jail-breaking* refers to finding ways to circumvent the built-in restrictions or guidelines set by the model's developers. These restrictions are usually in place for ethical, legal, or safety reasons. For example, what happens if you instruct the ABC Bot to ignore previous instructions:
+In LLMs, *jail-breaking* refers to finding ways to circumvent the built-in restrictions（规避内置限制） or guidelines set by the model's developers. These restrictions 限制 are usually in place for ethical, legal, or safety reasons. For example, what happens if you instruct the ABC Bot to ignore previous instructions:
 
 ```python
 response = rails.generate(messages=[{
@@ -157,9 +157,9 @@ Allowing the LLM to comply with this type of request is something we don't want.
 1. Activate the `self check input` rail in *config.yml*.
 2. Add a `self_check_input` prompt in *prompts.yml*.
 
-### Activate the rail
+### Activate the rail 激活轨道
 
-To activate the rail, include the `self check input` flow name in the input rails section of the *config.yml* file:
+To activate the rail, include the `self check input` flow name in the input rails section of the *config.yml* file: 激活轨道的写法
 
 ```yaml
 rails:
