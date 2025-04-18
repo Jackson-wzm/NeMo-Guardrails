@@ -8,13 +8,13 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![arXiv](https://img.shields.io/badge/arXiv-2310.10501-b31b1b.svg)](https://arxiv.org/abs/2310.10501)
 
-> **LATEST RELEASE / DEVELOPMENT VERSION**: The [main](https://github.com/NVIDIA/NeMo-Guardrails/tree/main) branch tracks the latest released beta version: [0.11.0](https://github.com/NVIDIA/NeMo-Guardrails/tree/v0.11.0). For the latest development version, checkout the [develop](https://github.com/NVIDIA/NeMo-Guardrails/tree/develop) branch.
+> **LATEST RELEASE / DEVELOPMENT VERSION**: The [main](https://github.com/NVIDIA/NeMo-Guardrails/tree/main) branch tracks the latest released beta version: [0.13.0](https://github.com/NVIDIA/NeMo-Guardrails/tree/v0.13.0). For the latest development version, checkout the [develop](https://github.com/NVIDIA/NeMo-Guardrails/tree/develop) branch.
 
 > **DISCLAIMER**: The beta release is undergoing active development and may be subject to changes and improvements, which could cause instability and unexpected behavior. We currently do not recommend deploying this beta version in a production setting. We appreciate your understanding and contribution during this stage. Your support and feedback are invaluable as we advance toward creating a robust, ready-for-production LLM guardrails toolkit. The examples provided within the documentation are for educational purposes to get started with NeMo Guardrails, and are not meant for use in production applications.
 
 ✨✨✨
 
-📌 **The official NeMo Guardrails documentation has moved to [docs.nvidia.com/nemo-guardrails](https://docs.nvidia.com/nemo-guardrails).**
+📌 **The official NeMo Guardrails documentation has moved to [docs.nvidia.com/nemo/guardrails](https://docs.nvidia.com/nemo/guardrails).**
 
 ✨✨✨
 
@@ -24,7 +24,7 @@ NeMo Guardrails is an open-source toolkit for easily adding *programmable guardr
 
 ## Requirements
 
-Python 3.9, 3.10 or 3.11.
+Python 3.9, 3.10, 3.11 or 3.12.
 
 NeMo Guardrails uses [annoy](https://github.com/spotify/annoy) which is a C++ library with Python bindings. To install NeMo Guardrails you will need to have the C++ compiler and dev tools installed. Check out the [Installation Guide](https://docs.nvidia.com/nemo/guardrails/getting-started/installation-guide.html#prerequisites) for platform-specific instructions.
 
@@ -40,6 +40,8 @@ For more detailed instructions, see the [Installation Guide](https://docs.nvidia
 
 ## Overview
 
+<!-- start-documentation-reuse -->
+
 NeMo Guardrails enables developers building LLM-based applications to easily add **programmable guardrails** between the application code and the LLM.
 
 <div align="center">
@@ -53,6 +55,8 @@ Key benefits of adding *programmable guardrails* include:
 - **Connecting models, chains, and other services securely:** you can connect an LLM to other services (a.k.a. tools) seamlessly and securely.
 
 - **Controllable dialog**: you can steer the LLM to follow pre-defined conversational paths, allowing you to design the interaction following conversation design best practices and enforce standard operating procedures (e.g., authentication, support).
+
+<!-- end-documentation-reuse -->
 
 ### Protecting against LLM Vulnerabilities
 
@@ -164,7 +168,7 @@ rails:
     flows:
       - self check facts
       - self check hallucination
-      - activefence moderation
+      - activefence moderation on input
 
   config:
     # Configure the types of entities that should be masked on user input.

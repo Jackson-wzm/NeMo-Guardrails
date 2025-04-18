@@ -17,19 +17,22 @@
 
 import asyncio
 import importlib.util
+import json
 import logging
 import os
 import re
 import threading
 import time
 import warnings
+from functools import partial
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Type, Union, cast
 
-from langchain_core.language_models import BaseLanguageModel
+from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.llms import BaseLLM
 
 from nemoguardrails.actions.llm.generation import LLMGenerationActions
 from nemoguardrails.actions.llm.utils import get_colang_history
+from nemoguardrails.actions.output_mapping import is_output_blocked
 from nemoguardrails.actions.v2_x.generation import LLMGenerationActionsV2dotx
 from nemoguardrails.colang import parse_colang_file
 from nemoguardrails.colang.v1_0.runtime.flows import compute_context
@@ -51,12 +54,16 @@ from nemoguardrails.embeddings.index import EmbeddingsIndex
 from nemoguardrails.embeddings.providers import register_embedding_provider
 from nemoguardrails.embeddings.providers.base import EmbeddingModel
 from nemoguardrails.kb.kb import KnowledgeBase
-from nemoguardrails.llm.providers import get_llm_provider, get_llm_provider_names
+from nemoguardrails.llm.models.initializer import (
+    ModelInitializationError,
+    init_llm_model,
+)
 from nemoguardrails.logging.explain import ExplainInfo
 from nemoguardrails.logging.processing_log import compute_generation_log
 from nemoguardrails.logging.stats import LLMStats
 from nemoguardrails.logging.verbose import set_verbose
 from nemoguardrails.patch_asyncio import check_sync_call_from_async_loop
+from nemoguardrails.rails.llm.buffer import get_buffer_strategy
 from nemoguardrails.rails.llm.config import EmbeddingSearchProvider, Model, RailsConfig
 from nemoguardrails.rails.llm.options import (
     GenerationLog,
@@ -65,7 +72,12 @@ from nemoguardrails.rails.llm.options import (
 )
 from nemoguardrails.rails.llm.utils import get_history_cache_key
 from nemoguardrails.streaming import StreamingHandler
-from nemoguardrails.utils import get_or_create_event_loop, new_event_dict, new_uuid
+from nemoguardrails.utils import (
+    extract_error_json,
+    get_or_create_event_loop,
+    new_event_dict,
+    new_uuid,
+)
 
 log = logging.getLogger(__name__)
 
@@ -76,11 +88,14 @@ class LLMRails:
     """Rails based on a given configuration."""
 
     config: RailsConfig
-    llm: Optional[BaseLLM]
+    llm: Optional[Union[BaseLLM, BaseChatModel]]
     runtime: Runtime
 
     def __init__(
-        self, config: RailsConfig, llm: Optional[BaseLLM] = None, verbose: bool = False
+        self,
+        config: RailsConfig,
+        llm: Optional[Union[BaseLLM, BaseChatModel]] = None,
+        verbose: bool = False,
     ):
         """Initializes the LLMRails instance.
 
@@ -103,6 +118,7 @@ class LLMRails:
         # The default embeddings model is using FastEmbed
         self.default_embedding_model = "all-MiniLM-L6-v2"
         self.default_embedding_engine = "FastEmbed"
+        self.default_embedding_params = {}
 
         # We keep a cache of the events history associated with a sequence of user messages.
         # TODO: when we update the interface to allow to return a "state object", this
@@ -212,6 +228,7 @@ class LLMRails:
             if model.type == "embeddings":
                 self.default_embedding_model = model.model
                 self.default_embedding_engine = model.engine
+                self.default_embedding_params = model.parameters or {}
                 break
 
         # InteractionLogAdapters used for tracing
@@ -281,7 +298,9 @@ class LLMRails:
 
         for flow_name in self.config.rails.input.flows:
             # content safety check input/output flows are special as they have parameters
-            if flow_name.startswith("content safety check"):
+            if flow_name.startswith("content safety check") or flow_name.startswith(
+                "topic safety check"
+            ):
                 continue
             if flow_name not in existing_flows_names:
                 raise ValueError(
@@ -289,7 +308,9 @@ class LLMRails:
                 )
 
         for flow_name in self.config.rails.output.flows:
-            if flow_name.startswith("content safety check"):
+            if flow_name.startswith("content safety check") or flow_name.startswith(
+                "topic safety check"
+            ):
                 continue
             if flow_name not in existing_flows_names:
                 raise ValueError(
@@ -305,8 +326,8 @@ class LLMRails:
         # If both passthrough mode and single call mode are specified, we raise an exception.
         if self.config.passthrough and self.config.rails.dialog.single_call.enabled:
             raise ValueError(
-                f"The passthrough mode and the single call dialog rails mode can't be used at the same time. "
-                f"The single call mode needs to use an altered prompt when prompting the LLM. "
+                "The passthrough mode and the single call dialog rails mode can't be used at the same time. "
+                "The single call mode needs to use an altered prompt when prompting the LLM. "
             )
 
     async def _init_kb(self):
@@ -325,48 +346,6 @@ class LLMRails:
         self.kb.init()
         await self.kb.build()
 
-    @staticmethod
-    def get_model_cls_and_kwargs(
-        model_config: Model,
-    ) -> Tuple[Type[BaseLanguageModel], Dict[str, Any]]:
-        """Helper to return the model class and kwargs for initialization."""
-        if model_config.engine not in get_llm_provider_names():
-            msg = f"Unknown LLM engine: {model_config.engine}."
-            if model_config.engine == "openai":
-                msg += " Please install langchain-openai using `pip install langchain-openai`."
-
-            raise Exception(msg)
-
-        provider_cls = get_llm_provider(model_config)
-        # We need to compute the kwargs for initializing the LLM
-        kwargs = model_config.parameters
-
-        # We also need to pass the model, if specified
-        if model_config.model:
-            # Some LLM providers use `model_name` instead of model. For backward compatibility
-            # we keep this hard-coded mapping.
-            if model_config.engine in [
-                "azure",
-                "openai",
-                "gooseai",
-                "nlpcloud",
-                "petals",
-                "trt_llm",
-                "vertexai",
-            ]:
-                kwargs["model_name"] = model_config.model
-            elif (
-                model_config.engine == "nvidia_ai_endpoints"
-                or model_config.engine == "nim"
-            ):
-                kwargs["model"] = model_config.model
-            else:
-                # The `__fields__` attribute is computed dynamically by pydantic.
-                if "model" in provider_cls.__fields__:
-                    kwargs["model"] = model_config.model
-
-        return provider_cls, kwargs
-
     def _init_llms(self):
         """
         Initializes the right LLM engines based on the configuration.
@@ -376,8 +355,10 @@ class LLMRails:
 
         The reason we provide an option for decoupling the main LLM engine from the action LLM
         is to allow for flexibility in using specialized LLM engines for specific actions.
-        """
 
+        Raises:
+            ModelInitializationError: If any model initialization fails
+        """
         # If we already have a pre-configured one,
         # we just need to register the LLM as an action param.
         if self.llm is not None:
@@ -385,33 +366,55 @@ class LLMRails:
             return
 
         llms = dict()
+
         for llm_config in self.config.models:
             if llm_config.type == "embeddings":
-                pass
-            else:
-                provider_cls, kwargs = self.get_model_cls_and_kwargs(llm_config)
+                continue
+
+            try:
+                model_name = llm_config.model
+                provider_name = llm_config.engine
+                kwargs = llm_config.parameters or {}
+                mode = llm_config.mode
+
+                llm_model = init_llm_model(
+                    model_name=model_name,
+                    provider_name=provider_name,
+                    mode=mode,
+                    kwargs=kwargs,
+                )
 
                 if self.config.streaming:
-                    if "streaming" in provider_cls.__fields__:
-                        kwargs["streaming"] = True
+                    if "streaming" in llm_model.model_fields:
+                        llm_model.streaming = True
                         self.main_llm_supports_streaming = True
                     else:
                         log.warning(
-                            f"The provider {provider_cls.__name__} does not support streaming."
+                            "Model %s from provider %s does not support streaming.",
+                            model_name,
+                            provider_name,
                         )
 
                 if llm_config.type == "main" or len(self.config.models) == 1:
-                    self.llm = provider_cls(**kwargs)
+                    self.llm = llm_model
                     self.runtime.register_action_param("llm", self.llm)
                 else:
                     model_name = f"{llm_config.type}_llm"
-                    setattr(self, model_name, provider_cls(**kwargs))
+                    setattr(self, model_name, llm_model)
                     self.runtime.register_action_param(
                         model_name, getattr(self, model_name)
                     )
+                    # this is used for content safety and topic control
                     llms[llm_config.type] = getattr(self, model_name)
 
-            self.runtime.register_action_param("llms", llms)
+            except ModelInitializationError as e:
+                log.error("Failed to initialize model: %s", str(e))
+                raise
+            except Exception as e:
+                log.error("Unexpected error initializing model: %s", str(e))
+                raise
+
+        self.runtime.register_action_param("llms", llms)
 
     def _get_embeddings_search_provider_instance(
         self, esp_config: Optional[EmbeddingSearchProvider] = None
@@ -428,6 +431,9 @@ class LLMRails:
                 ),
                 embedding_engine=esp_config.parameters.get(
                     "embedding_engine", self.default_embedding_engine
+                ),
+                embedding_params=esp_config.parameters.get(
+                    "embedding_parameters", self.default_embedding_params
                 ),
                 cache_config=esp_config.cache,
                 # We make sure we also pass additional relevant params.
@@ -639,6 +645,7 @@ class LLMRails:
 
             # We also keep a general reference to this object
             self.explain_info = explain_info
+        self.explain_info = explain_info
 
         if prompt is not None:
             # Currently, we transform the prompt request into a single turn conversation
@@ -685,11 +692,27 @@ class LLMRails:
                 assert isinstance(state, dict)
                 state_events = state["events"]
 
+            new_events = []
             # Compute the new events.
-            new_events = await self.runtime.generate_events(
-                state_events + events, processing_log=processing_log
-            )
-            output_state = None
+            try:
+                new_events = await self.runtime.generate_events(
+                    state_events + events, processing_log=processing_log
+                )
+                output_state = None
+
+            except Exception as e:
+                log.error("Error in generate_async: %s", e, exc_info=True)
+                streaming_handler = streaming_handler_var.get()
+                if streaming_handler:
+                    # Push an error chunk instead of None.
+                    error_message = str(e)
+                    error_dict = extract_error_json(error_message)
+                    error_payload = json.dumps(error_dict)
+                    await streaming_handler.push_chunk(error_payload)
+                    # push a termination signal
+                    await streaming_handler.push_chunk(None)
+                # Re-raise the exact exception
+                raise
         else:
             # In generation mode, by default the bot response is an instant action.
             instant_actions = ["UtteranceBotAction"]
@@ -759,7 +782,13 @@ class LLMRails:
 
         if exception:
             new_message = {"role": "exception", "content": exception}
+
         else:
+            # Ensure all items in responses are strings
+            responses = [
+                str(response) if not isinstance(response, str) else response
+                for response in responses
+            ]
             new_message = {"role": "assistant", "content": "\n".join(responses)}
         if response_tool_calls:
             new_message["tool_calls"] = response_tool_calls
@@ -911,7 +940,6 @@ class LLMRails:
                     input=messages, response=res, adapters=self._log_adapters
                 )
                 await tracer.export_async()
-                res = res.response[0]
             return res
         else:
             # If a prompt is used, we only return the content of the message.
@@ -924,19 +952,38 @@ class LLMRails:
         self,
         prompt: Optional[str] = None,
         messages: Optional[List[dict]] = None,
+        options: Optional[Union[dict, GenerationOptions]] = None,
+        state: Optional[Union[dict, State]] = None,
+        include_generation_metadata: Optional[bool] = False,
     ) -> AsyncIterator[str]:
         """Simplified interface for getting directly the streamed tokens from the LLM."""
-        streaming_handler = StreamingHandler()
+        streaming_handler = StreamingHandler(
+            include_generation_metadata=include_generation_metadata
+        )
 
+        # todo use a context var for buffer strategy and return it here?
+        # then iterating over buffer strategy is nested loop?
         asyncio.create_task(
             self.generate_async(
                 prompt=prompt,
                 messages=messages,
                 streaming_handler=streaming_handler,
+                options=options,
+                state=state,
             )
         )
-
-        return streaming_handler
+        # when we have output rails we wrap the streaming handler
+        # if len(self.config.rails.output.flows) > 0:
+        #
+        if self.config.rails.output.streaming.enabled:
+            # returns an async generator
+            return self._run_output_rails_in_streaming(
+                streaming_handler=streaming_handler,
+                messages=messages,
+                prompt=prompt,
+            )
+        else:
+            return streaming_handler
 
     def generate(
         self,
@@ -1149,3 +1196,225 @@ class LLMRails:
         else:
             config = state["config"]
         self.__init__(config=config, verbose=False)
+
+    async def _run_output_rails_in_streaming(
+        self,
+        streaming_handler: AsyncIterator[str],
+        prompt: Optional[str] = None,
+        messages: Optional[List[dict]] = None,
+        stream_first: Optional[bool] = None,
+    ) -> AsyncIterator[str]:
+        """
+        1. Buffers tokens from 'streaming_handler' via BufferStrategy.
+        2. Runs sequential (parallel for colang 2.0 in future) flows for each chunk.
+        3. Yields the chunk if not blocked, or STOP if blocked.
+        """
+
+        def _get_last_context_message(
+            messages: Optional[List[dict]] = None,
+        ) -> dict:
+            if messages is None:
+                return {}
+
+            for message in reversed(messages):
+                if message.get("role") == "context":
+                    return message
+            return {}
+
+        def _get_latest_user_message(
+            messages: Optional[List[dict]] = None,
+        ) -> dict:
+            if messages is None:
+                return {}
+            for message in reversed(messages):
+                if message.get("role") == "user":
+                    return message
+            return {}
+
+        def _prepare_params(
+            flow_id: str,
+            action_name: str,
+            chunk_str: str,
+            prompt: Optional[str] = None,
+            messages: Optional[List[dict]] = None,
+            action_params: Dict[str, Any] = {},
+        ):
+            context_message = _get_last_context_message(messages)
+            user_message = prompt or _get_latest_user_message(messages)
+
+            context = {
+                "user_message": user_message,
+                "bot_message": chunk_str,
+            }
+
+            if context_message:
+                context.update(context_message["content"])
+
+            model_name = flow_id.split("$")[-1].split("=")[-1].strip('"')
+
+            # we pass action params that are defined in the flow
+            # caveate, e.g. prmpt_security uses bot_response=$bot_message
+            # to resolve replace placeholders in action_params
+            for key, value in action_params.items():
+                if value == "$bot_message":
+                    action_params[key] = chunk_str
+                elif value == "$user_message":
+                    action_params[key] = user_message
+
+            return {
+                # TODO:: are there other context variables that need to be passed?
+                # passing events to compute context was not successful
+                # self._events failed
+                # context var failed due to different context
+                "context": context,
+                "llm_task_manager": self.runtime.llm_task_manager,
+                "config": self.config,
+                "model_name": model_name,
+                "llms": self.runtime.registered_action_params.get("llms", {}),
+                "llm": self.runtime.registered_action_params.get(
+                    f"{action_name}_llm", self.llm
+                ),
+                **action_params,
+            }
+
+        def _update_explain_info():
+            explain_info = explain_info_var.get()
+            if explain_info is None:
+                explain_info = ExplainInfo()
+                explain_info_var.set(explain_info)
+                self.explain_info = explain_info
+
+        output_rails_streaming_config = self.config.rails.output.streaming
+        buffer_strategy = get_buffer_strategy(output_rails_streaming_config)
+        output_rails_flows_id = self.config.rails.output.flows
+        stream_first = stream_first or output_rails_streaming_config.stream_first
+        get_action_details = partial(
+            _get_action_details_from_flow_id, flows=self.config.flows
+        )
+
+        async for chunk_list, chunk_str_rep in buffer_strategy(streaming_handler):
+            chunk_str = " ".join(chunk_list)
+
+            # Check if chunk_str_rep is a JSON string
+            # we yield a json error payload in generate_async when
+            # streaming has errors
+            try:
+                json.loads(chunk_str_rep)
+                yield chunk_str_rep
+                return
+            except json.JSONDecodeError:
+                pass
+            if stream_first:
+                words = chunk_str_rep.split()
+                if words:
+                    yield words[0]
+                    for word in words[1:]:
+                        yield f" {word}"
+
+            for flow_id in output_rails_flows_id:
+                action_name, action_params = get_action_details(flow_id)
+
+                params = _prepare_params(
+                    flow_id=flow_id,
+                    action_name=action_name,
+                    chunk_str=chunk_str,
+                    prompt=prompt,
+                    messages=messages,
+                    action_params=action_params,
+                )
+
+                # Execute the action. (Your execute_action returns only the result.)
+                result = await self.runtime.action_dispatcher.execute_action(
+                    action_name, params
+                )
+                # Include explain info (whatever _update_explain_info does)
+                _update_explain_info()
+
+                # Retrieve the action function from the dispatcher
+                action_func = self.runtime.action_dispatcher.get_action(action_name)
+
+                # Use the mapping to decide if the result indicates blocked content.
+                if is_output_blocked(result, action_func):
+                    reason = f"Blocked by {flow_id} rails."
+
+                    # return the error as a plain JSON string (not in SSE format)
+                    # NOTE: When integrating with the OpenAI Python client, the server code should:
+                    # 1. detect this JSON error object in the stream
+                    # 2. terminate the stream
+                    # 3. format the error following OpenAI's SSE format
+                    # the OpenAI client will then properly raise an APIError with this error message
+
+                    error_data = {
+                        "error": {
+                            "message": reason,
+                            "type": "guardrails_violation",
+                            "param": flow_id,
+                            "code": "content_blocked",
+                        }
+                    }
+
+                    # return as plain JSON: the server should detect this JSON and convert it to an HTTP error
+                    yield json.dumps(error_data)
+                    return
+
+            if not stream_first:
+                words = chunk_str_rep.split()
+                if words:
+                    yield words[0]
+                    for word in words[1:]:
+                        yield f" {word}"
+
+
+def _get_action_details_from_flow_id(
+    flow_id: str,
+    flows: List[Union[Dict, Any]],
+    prefixes: Optional[List[str]] = None,
+) -> Tuple[str, Any]:
+    """Get the action name and parameters from the flow id.
+
+    First, try to find an exact match.
+    If not found, then if the provided flow_id starts with one of the special prefixes,
+    return the first flow whose id starts with that same prefix.
+    """
+
+    supported_prefixes = [
+        "content safety check output",
+        "topic safety check output",
+    ]
+    if prefixes:
+        supported_prefixes.extend(prefixes)
+
+    candidate_flow = None
+
+    for flow in flows:
+        # If exact match, use it
+        if flow["id"] == flow_id:
+            candidate_flow = flow
+            break
+
+        # If no exact match, check if both the provided flow_id and this flow's id share a special prefix
+        for prefix in supported_prefixes:
+            if flow_id.startswith(prefix) and flow["id"].startswith(prefix):
+                candidate_flow = flow
+                # We don't break immediately here because an exact match would have been preferred,
+                # but since we're in the else branch it's fine to choose the first matching candidate.
+                # TODO:we should avoid having multiple matchin prefixes
+                break
+
+        if candidate_flow is not None:
+            break
+
+    if candidate_flow is None:
+        raise ValueError(f"No action found for flow_id: {flow_id}")
+
+    # we have identified a candidate, look for the run_action element.
+    for element in candidate_flow["elements"]:
+        if (
+            element["_type"] == "run_action"
+            and element["_source_mapping"]["filename"].endswith(".co")
+            and "execute" in element["_source_mapping"]["line_text"]
+            and "action_name" in element
+        ):
+            return element["action_name"], element["action_params"]
+
+    raise ValueError(f"No run_action element found for flow_id: {flow_id}")

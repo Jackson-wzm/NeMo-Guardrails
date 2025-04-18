@@ -23,6 +23,8 @@ NeMo Guardrails comes with a library of built-in guardrails that you can easily 
    - [Cleanlab Trustworthiness Score](#cleanlab)
    - [GCP Text Moderation](#gcp-text-moderation)
    - [Private AI PII detection](#private-ai-pii-detection)
+   - [Fiddler Guardrails for Safety and Hallucination Detection](#fiddler-guardrails-for-safety-and-hallucination-detection)
+   - [Prompt Security Protection](#prompt-security-protection)
    - OpenAI Moderation API - *[COMING SOON]*
 
 4. Other
@@ -419,9 +421,13 @@ The implementation for the self-check hallucination rail uses a slight variation
 
 Similar to the self-check fact-checking, we formulate the consistency checking similar to an NLI task with the original bot response as the *hypothesis* (`{{ statement }}`) and the extra generated responses as the context or *evidence* (`{{ paragraph }}`).
 
+## NVIDIA Models
+
+NeMo Guardrails provides out of the box connectivity for safety models trained by the NVIDIA for specialized use cases. These models shall be provided as both as HuggingFace checkpoints, and as NVIDIA NIM containers that will provide out of the box TRTLLM support with lower latency.
+
 ### Content Safety
 
-Content Safety feature acts as a robust set of guardrails designed to ensure the integrity and safety of both input and output text. This feature allows users to utilize a variety of advanced content safety models such as AEGIS, Llama Guard 3, ShieldGemma, Llama Guard 2, etc.
+The content safety checks in Guardrails act as a robust set of guardrails designed to ensure the integrity and safety of both input and output text. This feature allows users to utilize a variety of advanced content safety models such as Nvidia's [NemoGuard ContentSafety](https://docs.nvidia.com/nim/#nemoguard) model, Meta's [Llama Guard 3](https://www.llama.com/docs/model-cards-and-prompt-formats/llama-guard-3/), Google's [ShieldGemma](https://ai.google.dev/gemma/docs/shieldgemma), etc.
 
 To use the content safety check, you should:
 
@@ -433,9 +439,11 @@ models:
     engine: openai
     model: gpt-3.5-turbo-instruct
 
-  - type: shieldgemma
+  - type: "content_safety"
     engine: nim
-    model: google/shieldgemma-9b
+    parameters:
+      base_url: "http://localhost:8123/v1"
+      model_name: "llama-3.1-nemoguard-8b-content-safety"
 
   - type: llama_guard_2
     engine: vllm_openai
@@ -454,10 +462,10 @@ The `type` is a unique idenfier for the model that will be passed to the input a
 rails:
   input:
     flows:
-      - content safety check input $model=shieldgemma
+      - content safety check input $model=content_safety
   output:
     flows:
-      - content safety check output $model=llama_guard_2
+      - content safety check output $model=content_safety
 ```
 
 It is important to note that you must define the models in the `models` section of the `config.yml` file before using them in the input and output flows. The `content safety check input` and `content safety check output` flows are used to check the input and output text, respectively. The `$model` parameter specifies the model to be used for content safety checking. The model must be defined in the `models` section of the `config.yml` file. The `content safety check input` and `content safetry check output` flows return a boolean value indicating whether the input or output text is safe. Depending on the model, it also returns set of policy violations. Please refer to the [content safety example](../../examples/configs/content_safety/README.md) for more details.
@@ -512,6 +520,74 @@ If you're using this function for a different task with a custom prompt, you'll 
 The above is an example prompt that you can use with the *content safety check input $model=shieldgemma*. The prompt has one input variable: `{{ user_input }}`, which includes user input that should be moderated. The completion must be "yes" if the response is not safe and "no" otherwise. Optionally, some models may return a set of policy violations.
 
 The `content safety check input` and `content safety check output` rails executes the [`content_safety_check_input`](../../nemoguardrails/library/content_safety/actions.py) and [`content_safety_check_output`](../../nemoguardrails/library/content_safety/actions.py) actions respectively.
+
+### Topic Safety
+
+The topic safety feature allows you to define and enforce specific conversation rules and boundaries using NVIDIA's Topic Control model. This model helps ensure that conversations stay within predefined topics and follow specified guidelines.
+
+#### Usage
+
+To use the topic safety check, you should:
+
+1. Include the topic control model in the models section of your `config.yml` file (as shown in the Content Safety section above):
+
+```yaml
+models:
+  - type: "topic_control"
+    engine: nim
+    parameters:
+      base_url: "http://localhost:8123/v1"
+      model_name: "llama-3.1-nemoguard-8b-topic-control"
+```
+
+2. Include the topic safety check in your rails configuration:
+
+```yaml
+rails:
+  input:
+    flows:
+      - topic safety check input $model=topic_control
+```
+
+3. Define your topic rules in the system prompt. Here's an example prompt that enforces specific conversation boundaries:
+
+```yaml
+prompts:
+  - task: topic_safety_check_input $model=topic_control
+    content: |
+      You are to act as a customer service agent, providing users with factual information in accordance to the knowledge base. Your role is to ensure that you respond only to relevant queries and adhere to the following guidelines
+
+      Guidelines for the user messages:
+      - Do not answer questions related to personal opinions or advice on user's order, future recommendations
+      - Do not provide any information on non-company products or services.
+      - Do not answer enquiries unrelated to the companny policies.
+```
+
+We need to make sure that the system prompt ends with the topic safety output restriction - `If any of the above conditions are violated, please respond with "off-topic". Otherwise, respond with "on-topic". You must respond with "on-topic" or "off-topic".` This condition is automatically added to the system prompt by the topic safety check input flow. In case you would like to customize the output restriction, you can do so by modifying the `TOPIC_SAFETY_OUTPUT_RESTRICTION` variable in the [`topic_safety_check_input`](../../nemoguardrails/library/topic_safety/actions.py) action.
+
+#### Customizing Topic Rules
+
+You can customize the topic boundaries by modifying the rules in your prompt. For example, let's add more guidelines specifying additional boundaries:
+
+```yaml
+prompts:
+  - task: topic_safety_check_input $model=topic_control
+    content: |
+      You are to act as a customer service agent, providing users with factual information in accordance to the knowledge base. Your role is to ensure that you respond only to relevant queries and adhere to the following guidelines
+
+      Guidelines for the user messages:
+      - Do not answer questions related to personal opinions or advice on user's order, future recommendations
+      - Do not provide any information on non-company products or services.
+      - Do not answer enquiries unrelated to the companny policies.
+      - Do not answer questions asking for personal details about the agent or its creators.
+      - Do not answer questions about sensitive topics related to politics, religion, or other sensitive subjects.
+      - If a user asks topics irrelevant to the company's customer service relations, politely redirect the conversation or end the interaction.
+      - Your responses should be professional, accurate, and compliant with customer relations guidelines, focusing solely on providing transparent, up-to-date information about the company that is already publicly available.
+```
+
+#### Implementation Details
+
+The 'topic safety check input' flow uses the [`topic_safety_check_input`](../../nemoguardrails/library/topic_safety/actions.py) action. The model returns a boolean value indicating whether the user input is on-topic or not. Please refer to the [topic safety example](../../examples/configs/topic_safety/README.md) for more details.
 
 ## Community Models and Libraries
 
@@ -611,7 +687,7 @@ This category of rails relies on 3rd party APIs for various guardrailing tasks.
 
 ### ActiveFence
 
-NeMo Guardrails supports using the [ActiveFence ActiveScore API](https://docs.activefence.com/index.html) as an input rail out-of-the-box (you need to have the `ACTIVEFENCE_API_KEY` environment variable set).
+NeMo Guardrails supports using the [ActiveFence ActiveScore API](https://docs.activefence.com/index.html) as an input and output rail out-of-the-box (you need to have the `ACTIVEFENCE_API_KEY` environment variable set).
 
 #### Example usage
 
@@ -619,7 +695,10 @@ NeMo Guardrails supports using the [ActiveFence ActiveScore API](https://docs.ac
 rails:
   input:
     flows:
-      - activefence moderation
+      - activefence moderation on input
+  output:
+    flows:
+      - activefence moderation on output
 ```
 
 For more details, check out the [ActiveFence Integration](./community/active-fence.md) page.
@@ -674,9 +753,9 @@ For more details, check out the [GCP Text Moderation](https://github.com/NVIDIA/
 
 ### Private AI PII Detection
 
-NeMo Guardrails supports using [Private AI API](https://docs.private-ai.com/?utm_medium=github&utm_campaign=nemo-guardrails) for PII detection in input, output and retrieval flows.
+NeMo Guardrails supports using [Private AI API](https://docs.private-ai.com/?utm_medium=github&utm_campaign=nemo-guardrails) for PII detection and masking input, output and retrieval flows.
 
-To activate the PII detection, you need specify `server_endpoint`, and the entities that you want to detect. You'll also need to set the `PAI_API_KEY` environment variable if you're using the Private AI cloud API.
+To activate the PII detection or masking, you need specify `server_endpoint`, and the entities that you want to detect or mask. You'll also need to set the `PAI_API_KEY` environment variable if you're using the Private AI cloud API.
 
 ```yaml
 rails:
@@ -696,6 +775,8 @@ rails:
 ```
 
 #### Example usage
+
+**PII detection**
 
 ```yaml
 rails:
@@ -712,28 +793,44 @@ rails:
 
 For more details, check out the [Private AI Integration](https://github.com/NVIDIA/NeMo-Guardrails/blob/develop/docs/user-guides/community/privateai.md) page.
 
-### Private AI PII Detection
+### Fiddler Guardrails for Safety and Hallucination Detection
 
-NeMo Guardrails supports using [Private AI API](https://docs.private-ai.com/?utm_medium=github&utm_campaign=nemo-guardrails) for PII detection in input, output and retrieval flows.
+NeMo Guardrails supports using [Fiddler Guardrails](https://docs.fiddler.ai/product-guide/llm-monitoring/guardrails) for safety and hallucination detection in input and output flows.
 
-To activate the PII detection, you need specify `server_endpoint`, and the entities that you want to detect. You'll also need to set the `PAI_API_KEY` environment variable if you're using the Private AI cloud API.
+In order to access Fiddler guardrails, you need access to a valid Fiddler environment, and a [Fiddler environment key](https://docs.fiddler.ai/ui-guide/administration-ui/settings#credentials). You'll need to set the `FIDDLER_API_KEY` environment variable to authenticate into the Fiddler service.
 
 ```yaml
 rails:
   config:
-    privateai:
-      server_endpoint: http://your-privateai-api-endpoint/process/text  # Replace this with your Private AI process text endpoint
-      input:
-        entities:  # If no entity is specified here, all supported entities will be detected by default.
-          - NAME_FAMILY
-          - EMAIL_ADDRESS
-          ...
-      output:
-        entities:
-          - NAME_FAMILY
-          - EMAIL_ADDRESS
-          ...
+    fiddler:
+      server_endpoint: https://testfiddler.ai # Replace this with your fiddler environment
+
 ```
+
+#### Example usage
+
+```yaml
+rails:
+    config:
+        fiddler:
+            fiddler_endpoint: https://testfiddler.ai # Replace this with your fiddler environment
+    input:
+        flows:
+            - fiddler user safety
+    output:
+        flows:
+            - fiddler bot safety
+            - fiddler bot faithfulness
+
+```
+
+For more details, check out the [Fiddler Integration](./community/fiddler.md) page.
+
+### Prompt Security Protection
+
+NeMo Guardrails supports using [Prompt Security API](https://prompt.security/?utm_medium=github&utm_campaign=nemo-guardrails) for protecting input and output retrieval flows.
+
+To activate the protection, you need to set the `PS_PROTECT_URL` and `PS_APP_ID` environment variables.
 
 #### Example usage
 
@@ -741,16 +838,13 @@ rails:
 rails:
   input:
     flows:
-      - detect pii on input
+      - protect prompt
   output:
     flows:
-      - detect pii on output
-  retrieval:
-    flows:
-      - detect pii on retrieval
+      - protect response
 ```
 
-For more details, check out the [Private AI Integration](./community/privateai.md) page.
+For more details, check out the [Prompt Security Integration](./community/prompt-security.md) page.
 
 ## Other
 
@@ -831,9 +925,13 @@ To compute the perplexity of a string, the current implementation uses the `gpt2
 
 **NOTE**: in future versions, multiple options will be supported.
 
+#### Model-based Jailbreak Detections
+
+There is currently one available model-based detection, using a random forest-based detector trained on [`snowflake/snowflake-arctic-embed-m-long`](https://huggingface.co/Snowflake/snowflake-arctic-embed-m-long) embeddings.
+
 #### Setup
 
-The recommended way for using the jailbreak detection heuristics is to [deploy the jailbreak detection heuristics server](advanced/jailbreak-detection-heuristics-deployment.md) separately.
+The recommended way for using the jailbreak detection heuristics and models is to [deploy the jailbreak detection server](advanced/jailbreak-detection-deployment.md) separately.
 
 For quick testing, you can use the jailbreak detection heuristics rail locally by first installing `transformers` and `tourch`.
 

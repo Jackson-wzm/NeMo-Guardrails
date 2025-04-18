@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import logging
+import re
 from ast import literal_eval
 from typing import Any, Callable, List, Optional, Union
 
@@ -27,25 +28,26 @@ from nemoguardrails.llm.filters import (
     first_turns,
     indent,
     last_turns,
+    remove_reasoning_traces,
     remove_text_messages,
     to_chat_messages,
     to_intent_messages,
     to_intent_messages_2,
     to_messages,
-    to_messages_nemollm,
     to_messages_v2,
     user_assistant_sequence,
-    user_assistant_sequence_nemollm,
     verbose_v1,
 )
 from nemoguardrails.llm.output_parsers import (
     bot_intent_parser,
     bot_message_parser,
     is_content_safe,
+    nemoguard_parse_prompt_safety,
+    nemoguard_parse_response_safety,
     user_intent_parser,
     verbose_v1_parser,
 )
-from nemoguardrails.llm.prompts import get_prompt
+from nemoguardrails.llm.prompts import get_prompt, get_task_model
 from nemoguardrails.llm.types import Task
 from nemoguardrails.rails.llm.config import MessageTemplate, RailsConfig
 
@@ -69,15 +71,11 @@ class LLMTaskManager:
         self.env.filters["last_turns"] = last_turns
         self.env.filters["indent"] = indent
         self.env.filters["user_assistant_sequence"] = user_assistant_sequence
-        self.env.filters[
-            "user_assistant_sequence_nemollm"
-        ] = user_assistant_sequence_nemollm
         self.env.filters["to_messages"] = to_messages
         self.env.filters["to_messages_v2"] = to_messages_v2
         self.env.filters["to_intent_messages"] = to_intent_messages
         self.env.filters["to_intent_messages_2"] = to_intent_messages_2
         self.env.filters["to_chat_messages"] = to_chat_messages
-        self.env.filters["to_messages_nemollm"] = to_messages_nemollm
         self.env.filters["verbose_v1"] = verbose_v1
 
         self.output_parsers = {
@@ -86,6 +84,8 @@ class LLMTaskManager:
             "bot_message": bot_message_parser,
             "verbose_v1": verbose_v1_parser,
             "is_content_safe": is_content_safe,
+            "nemoguard_parse_prompt_safety": nemoguard_parse_prompt_safety,
+            "nemoguard_parse_response_safety": nemoguard_parse_response_safety,
         }
 
         # The prompt context will hold additional variables that ce also be included
@@ -199,10 +199,46 @@ class LLMTaskManager:
         return messages
 
     def _get_messages_text_length(self, messages: List[dict]) -> int:
-        """Return the length of the text in the messages."""
+        """Return the length of the text in the messages for token counting purposes.
+
+        This method calculates text length for token limit checks, using placeholders for base64 images
+        instead of counting their full encoded size. This allows multimodal content with large base64
+        images to pass the length checks while still preserving the actual content.
+        """
+
+        def process_content_for_length(content):
+            """Process any content type (string, list, dict) and return its effective text."""
+            result_text = ""
+
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict):
+                        if item.get("type") == "text":
+                            result_text += item.get("text", "") + "\n"
+                        elif item.get("type") == "image_url" and isinstance(
+                            item.get("image_url"), dict
+                        ):
+                            # image_url items, only count a placeholder length
+                            result_text += "[IMAGE_CONTENT]\n"
+
+            # string content that might contain base64 data
+            elif isinstance(content, str):
+                base64_pattern = r"data:image/[^;]+;base64,[A-Za-z0-9+/=]+"
+                if re.search(base64_pattern, content):
+                    # Replace base64 content with placeholder using regex
+                    result_text += (
+                        re.sub(base64_pattern, "[IMAGE_CONTENT]", content) + "\n"
+                    )
+                else:
+                    result_text += content + "\n"
+
+            return result_text
+
         text = ""
         for message in messages:
-            text += message["content"] + "\n"
+            content = message.get("content", "")
+            text += process_content_for_length(content)
+
         return len(text)
 
     def render_task_prompt(
@@ -270,7 +306,9 @@ class LLMTaskManager:
                 task_prompt_length = self._get_messages_text_length(task_messages)
             return task_messages
 
-    def parse_task_output(self, task: Task, output: str):
+    def parse_task_output(
+        self, task: Task, output: str, forced_output_parser: Optional[str] = None
+    ):
         """Parses the output for the provided tasks.
 
         If an output parser is associated with the prompt, it will be used.
@@ -279,10 +317,22 @@ class LLMTaskManager:
         prompt = get_prompt(self.config, task)
 
         output_parser = None
-        if prompt.output_parser:
+        if forced_output_parser:
+            output_parser = self.output_parsers.get(forced_output_parser)
+        elif prompt.output_parser:
             output_parser = self.output_parsers.get(prompt.output_parser)
-            if not output_parser:
-                logging.warning("No output parser found for %s", prompt.output_parser)
+        if not output_parser:
+            logging.info("No output parser found for %s", prompt.output_parser)
+
+        model = get_task_model(self.config, task)
+        if (
+            model
+            and model.reasoning_config
+            and model.reasoning_config.remove_thinking_traces
+        ):
+            start_token = model.reasoning_config.start_token
+            end_token = model.reasoning_config.end_token
+            output = remove_reasoning_traces(output, start_token, end_token)
 
         if output_parser:
             return output_parser(output)

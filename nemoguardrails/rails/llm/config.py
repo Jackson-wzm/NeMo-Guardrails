@@ -17,12 +17,19 @@
 
 import logging
 import os
+import re
 import warnings
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError, root_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    ValidationError,
+    model_validator,
+    root_validator,
+)
 from pydantic.fields import Field
 
 from nemoguardrails import utils
@@ -53,12 +60,29 @@ standard_library_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "colang", "v2_x", "library")
 )
 
-# nemoguardrails/lobrary
+# nemoguardrails/library
 guardrails_stdlib_path = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..")
 )
 colang_path_dirs.append(standard_library_path)
 colang_path_dirs.append(guardrails_stdlib_path)
+
+
+class ReasoningModelConfig(BaseModel):
+    """Configuration for reasoning models/LLMs, including start and end tokens for reasoning traces."""
+
+    remove_thinking_traces: Optional[bool] = Field(
+        default=True,
+        description="For reasoning models (e.g. OpenAI o1, DeepSeek-r1), if the output parser should remove thinking traces.",
+    )
+    start_token: Optional[str] = Field(
+        default="<think>",
+        description="The start token used for reasoning traces.",
+    )
+    end_token: Optional[str] = Field(
+        default="</think>",
+        description="The end token used for reasoning traces.",
+    )
 
 
 class Model(BaseModel):
@@ -78,7 +102,51 @@ class Model(BaseModel):
         default=None,
         description="The name of the model. If not specified, it should be specified through the parameters attribute.",
     )
+
+    reasoning_config: Optional[ReasoningModelConfig] = Field(
+        default_factory=ReasoningModelConfig,
+        description="Configuration parameters for reasoning LLMs.",
+    )
     parameters: Dict[str, Any] = Field(default_factory=dict)
+
+    mode: Literal["chat", "text"] = Field(
+        default="chat",
+        description="Whether the mode is 'text' completion or 'chat' completion. Allowed values are 'chat' or 'text'.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def set_and_validate_model(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            parameters = data.get("parameters")
+            if parameters is None:
+                return data
+            model_field = data.get("model")
+            model_from_params = parameters.get("model_name") or parameters.get("model")
+
+            if model_field and model_from_params:
+                raise ValueError(
+                    "Model name must be specified in exactly one place: either in the 'model' field or in parameters, not both."
+                )
+            if not model_field and model_from_params:
+                data["model"] = model_from_params
+                if (
+                    "model_name" in parameters
+                    and parameters["model_name"] == model_from_params
+                ):
+                    parameters.pop("model_name")
+                elif "model" in parameters and parameters["model"] == model_from_params:
+                    parameters.pop("model")
+            return data
+
+    @model_validator(mode="after")
+    def model_must_be_none_empty(self) -> "Model":
+        """Validate that a model name is present either directly or in parameters."""
+        if not self.model or not self.model.strip():
+            raise ValueError(
+                "Model name must be specified either directly in the 'model' field or through 'model_name'/'model' in parameters"
+            )
+        return self
 
 
 class Instruction(BaseModel):
@@ -106,6 +174,11 @@ class SensitiveDataDetectionOptions(BaseModel):
     mask_token: str = Field(
         default="*",
         description="The token that should be used to mask the sensitive data.",
+    )
+
+    score_threshold: float = Field(
+        default=0.2,
+        description="The score threshold that should be used to detect the sensitive data.",
     )
 
 
@@ -158,6 +231,23 @@ class PrivateAIDetection(BaseModel):
     retrieval: PrivateAIDetectionOptions = Field(
         default_factory=PrivateAIDetectionOptions,
         description="Configuration of the entities to be detected on retrieved relevant chunks.",
+    )
+
+
+class FiddlerGuardrails(BaseModel):
+    """Configuration for Fiddler Guardrails."""
+
+    fiddler_endpoint: str = Field(
+        default="http://localhost:8080/process/text",
+        description="The global endpoint for Fiddler Guardrails requests.",
+    )
+    safety_threshold: float = Field(
+        default=0.1,
+        description="Fiddler Guardrails safety detection threshold.",
+    )
+    faithfulness_threshold: float = Field(
+        default=0.05,
+        description="Fiddler Guardrails faithfulness detection threshold.",
     )
 
 
@@ -242,7 +332,7 @@ class EmbeddingsCacheConfig(BaseModel):
         description="Whether caching of the embeddings should be enabled or not.",
     )
     key_generator: str = Field(
-        default="md5",
+        default="sha256",
         description="The method to use for generating the cache keys.",
     )
     store: str = Field(
@@ -299,12 +389,38 @@ class InputRails(BaseModel):
     )
 
 
+class OutputRailsStreamingConfig(BaseModel):
+    """Configuration for managing streaming output of LLM tokens."""
+
+    enabled: bool = Field(
+        default=False, description="Enables streaming mode when True."
+    )
+    chunk_size: int = Field(
+        default=200,
+        description="The number of tokens in each processing chunk. This is the size of the token block on which output rails are applied.",
+    )
+    context_size: int = Field(
+        default=50,
+        description="The number of tokens carried over from the previous chunk to provide context for continuity in processing.",
+    )
+    stream_first: bool = Field(
+        default=True,
+        description="If True, token chunks are streamed immediately before output rails are applied.",
+    )
+    model_config = ConfigDict(extra="allow")
+
+
 class OutputRails(BaseModel):
     """Configuration of output rails."""
 
     flows: List[str] = Field(
         default_factory=list,
         description="The names of all the flows that implement output rails.",
+    )
+
+    streaming: Optional[OutputRailsStreamingConfig] = Field(
+        default_factory=OutputRailsStreamingConfig,
+        description="Configuration for streaming output rails.",
     )
 
 
@@ -397,6 +513,19 @@ class JailbreakDetectionConfig(BaseModel):
     )
     prefix_suffix_perplexity_threshold: float = Field(
         default=1845.65, description="The prefix/suffix perplexity threshold."
+    )
+    nim_url: Optional[str] = Field(
+        default=None,
+        description="Location of the NemoGuard JailbreakDetect NIM.",
+    )
+    nim_port: int = Field(
+        default=8000,
+        description="Port the NemoGuard JailbreakDetect NIM is listening on.",
+    )
+    embedding: Optional[str] = Field(
+        default="nvidia/nv-embedqa-e5-v5",
+        description="DEPRECATED: Model to use for embedding-based detections. Use NIM instead.",
+        deprecated=True,
     )
 
 
@@ -502,6 +631,11 @@ class RailsConfigData(BaseModel):
     privateai: Optional[PrivateAIDetection] = Field(
         default_factory=PrivateAIDetection,
         description="Configuration for Private AI.",
+    )
+
+    fiddler: Optional[FiddlerGuardrails] = Field(
+        default_factory=FiddlerGuardrails,
+        description="Configuration for Fiddler Guardrails.",
     )
 
 
@@ -1192,11 +1326,14 @@ class RailsConfig(BaseModel):
 
     @property
     def streaming_supported(self):
-        """Whether the current config supports streaming or not.
+        """Whether the current config supports streaming or not."""
 
-        Currently, we don't support streaming if there are output rails.
-        """
         if len(self.rails.output.flows) > 0:
+            # if we have output rails streaming enabled
+            # we keep it in case it was needed when we have
+            # support per rails
+            if self.rails.output.streaming.enabled:
+                return True
             return False
 
         return True

@@ -100,7 +100,7 @@ def co_v2(
                     history += f'  bot say "{event["script"]}"\n'
 
                 elif event["type"] == "StartTool":
-                    s = f'  await {event["flow_name"]}'
+                    s = f"  await {event['flow_name']}"
                     for k, v in event.items():
                         if k in [
                             "type",
@@ -275,13 +275,22 @@ def verbose_v1(colang_history: str) -> str:
 
 
 def to_chat_messages(events: List[dict]) -> str:
-    """Filter that turns an array of events into a sequence of user/assistant messages."""
+    """Filter that turns an array of events into a sequence of user/assistant messages.
+
+    Properly handles multimodal content by preserving the structure when the content
+    is in the format of a Message object with potential image_url content.
+    """
     messages = []
     for event in events:
         if event["type"] == "UserMessage":
-            messages.append({"type": "user", "content": event["text"]})
+            # Preserve the original structure when possible to support multimodal content
+            content = event["text"]
+            messages.append({"role": "user", "content": content})
         elif event["type"] == "StartUtteranceBotAction":
-            messages.append({"type": "assistant", "content": event["script"]})
+            messages.append({"role": "assistant", "content": event["script"]})
+        elif event["type"] == "SystemMessage" and "content" in event:
+            # Handle system messages that might contain multimodal content
+            messages.append({"role": "system", "content": event["content"]})
 
     return messages
 
@@ -296,11 +305,30 @@ def user_assistant_sequence(events: List[dict]) -> str:
        User: What can you do?
        Assistant: I can help with many things.
        ```
+
+    For multimodal content, it extracts text content and indicates if there were images.
     """
     history_items = []
     for event in events:
         if event["type"] == "UserMessage":
-            history_items.append("User: " + event["text"])
+            content = event["text"]
+            # Handle multimodal content by extracting text
+            if isinstance(content, list):
+                text_parts = []
+                has_images = False
+                for item in content:
+                    if isinstance(item, dict):
+                        if item.get("type") == "text":
+                            text_parts.append(item.get("text", ""))
+                        elif item.get("type") == "image_url":
+                            has_images = True
+                text_content = " ".join(text_parts)
+                if has_images:
+                    text_content += " [+ image]"
+                history_items.append("User: " + text_content)
+            else:
+                # Regular text content
+                history_items.append("User: " + str(content))
         elif event["type"] == "StartUtteranceBotAction":
             history_items.append("Assistant: " + event["script"])
 
@@ -357,86 +385,13 @@ def indent(text: str, n_spaces: int) -> str:
     return textwrap.indent(text, " " * n_spaces)
 
 
-def user_assistant_sequence_nemollm(events: List[dict]) -> str:
-    """Filter that turns an array of events into a sequence of user/assistant messages.
-
-    The output will look like:
-       ```
-       <extra_id_1>User
-       hi
-       <extra_id_1>Assistant
-       Hello there!
-       <extra_id_1>User
-       What can you do?
-       <extra_id_1>Assistant
-       I can help with many things.
-       ```
-    """
-    history_items = []
-    for event in events:
-        if event["type"] == "UserMessage":
-            history_items.append("<extra_id_1>User\n" + event["text"])
-        elif event["type"] == "StartUtteranceBotAction":
-            history_items.append("<extra_id_1>Assistant\n" + event["script"])
-
-    return "\n".join(history_items)
-
-
 def _previous_line(lines: List[str], i: int):
     """Returns the previous lines, skipping comments."""
+
     i = i - 1
     while i > 0 and lines[i].strip().startswith("#"):
         i -= 1
     return lines[i]
-
-
-def to_messages_nemollm(colang_history: str) -> str:
-    """Filter that given a history in colang format, returns a messages string
-    in the chat format used by NeMo LLM models."""
-    messages = []
-
-    # For now, we use a simple heuristic. The line `user "xxx"` gets translated to
-    # a message from the user, and the rest gets translated to messages from the assistant.
-    lines = colang_history.split("\n")
-
-    bot_lines = []
-    for i, line in enumerate(lines):
-        if line.startswith('user "'):
-            # If we have bot lines in the buffer, we first add a bot message.
-            if bot_lines:
-                messages.append({"type": "assistant", "content": "\n".join(bot_lines)})
-                bot_lines = []
-
-            messages.append({"type": "user", "content": line[6:-1]})
-
-        elif line.strip() == "":
-            # On empty lines, we also reset the bot buffer.
-            if bot_lines:
-                messages.append({"type": "assistant", "content": "\n".join(bot_lines)})
-                bot_lines = []
-        else:
-            if i > 0 and _previous_line(lines, i).startswith('user "'):
-                if not line.strip().startswith("#"):
-                    line = "User intent: " + line.strip()
-            elif line.startswith("user "):
-                line = "User intent: " + line[5:].strip()
-            elif line.startswith("bot "):
-                line = "Bot intent: " + line[4:].strip()
-            elif line.startswith('  "'):
-                line = "Bot message: " + line[2:].strip()
-            bot_lines.append(line)
-
-    # Check if there is a last message from the bot.
-    if bot_lines:
-        messages.append({"type": "bot", "content": "\n".join(bot_lines)})
-
-    messages_string = ""
-    for m in messages:
-        if m["type"] == "assistant" or m["type"] == "bot":
-            messages_string += "<extra_id_1>Assistant\n" + m["content"] + "\n"
-        elif m["type"] == "user":
-            messages_string += "<extra_id_1>User\n" + m["content"] + "\n"
-    return messages_string
 
 
 def remove_trailing_new_line(s: str):
@@ -482,3 +437,26 @@ def conversation_to_events(conversation: List) -> List[dict]:
             )
 
     return events
+
+
+def remove_reasoning_traces(response: str, start_token: str, end_token: str) -> str:
+    """Removes the text between the first occurrence of the start token and the
+    last occurrence of the last token, if these tokens exist in the response.
+
+    This utility function is useful to strip reasoning traces from reasoning LLMs
+    that encode the reasoning traces between specific tokens.
+    """
+    if start_token and end_token:
+        start_index = response.find(start_token)
+        # If the start index is missing, this is probably a continuation of a bot message
+        # started in the prompt.
+        if start_index == -1:
+            start_index = 0
+        end_index = response.rfind(end_token)
+        if end_index == -1:
+            return response
+
+        if start_index != -1 and end_index != -1 and start_index < end_index:
+            return response[:start_index] + response[end_index + len(end_token) :]
+
+    return response

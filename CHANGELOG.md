@@ -2,10 +2,105 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-NOTE:
-The changes related to the Colang language and runtime have moved to [CHANGELOG-Colang](./CHANGELOG-Colang.md) file.
+> [!NOTE]
+> We have updated our changelog format!
+>
+> The changes related to the Colang language and runtime have moved to [CHANGELOG-Colang](./CHANGELOG-Colang.md) file.
+
+## [0.13.0] - 2025-03-25
+
+### 🚀 Features
+
+- Support models with reasoning traces ([#996](https://github.com/NVIDIA/NeMo-Guardrails/issues/996))
+- Add SHA-256 hashing option ([#988](https://github.com/NVIDIA/NeMo-Guardrails/issues/988))
+- Add Fiddler Guardrails integration ([#964](https://github.com/NVIDIA/NeMo-Guardrails/issues/964), [#1043](https://github.com/NVIDIA/NeMo-Guardrails/issues/1043))
+- Add generation metadata to streaming chunks ([#1011](https://github.com/NVIDIA/NeMo-Guardrails/issues/1011))
+- Improve alpha to beta bot migration ([#878](https://github.com/NVIDIA/NeMo-Guardrails/issues/878))
+- Support multimodal input and output rails ([#1033](https://github.com/NVIDIA/NeMo-Guardrails/issues/1033))
+- Add support for NemoGuard JailbreakDetect NIM.  ([#1038](https://github.com/NVIDIA/NeMo-Guardrails/issues/1038))
+- Set default start and end reasoning tokens ([#1050](https://github.com/NVIDIA/NeMo-Guardrails/issues/1050))
+- Improve output rails error handling for SSE format ([#1058](https://github.com/NVIDIA/NeMo-Guardrails/issues/1058))
+
+### 🐛 Bug Fixes
+
+- Ensure parse_task_output is called after all llm_call invocations ([#1047](https://github.com/NVIDIA/NeMo-Guardrails/issues/1047))
+- Handle exceptions in generate_events to propagate errors in streaming ([#1012](https://github.com/NVIDIA/NeMo-Guardrails/issues/1012))
+- Ensure output rails streaming is enabled explicitly ([#1045](https://github.com/NVIDIA/NeMo-Guardrails/issues/1045))
+- Improve multimodal prompt length calculation for base64 images ([#1053](https://github.com/NVIDIA/NeMo-Guardrails/issues/1053))
+
+### 🚜 Refactor
+
+- Move startup and shutdown logic to lifespan in server  ([#999](https://github.com/NVIDIA/NeMo-Guardrails/issues/999))
+
+### 📚 Documentation
+
+- Add multimodal rails documentation ([#1061](https://github.com/NVIDIA/NeMo-Guardrails/issues/1061))
+- Add content safety tutorial ([#1042](https://github.com/NVIDIA/NeMo-Guardrails/issues/1042))
+- Revise reasoning model info ([#1062](https://github.com/NVIDIA/NeMo-Guardrails/issues/1062))
+- Consider new GS experience ([#1005](https://github.com/NVIDIA/NeMo-Guardrails/issues/1005))
+- Restore deleted configuration files ([#963](https://github.com/NVIDIA/NeMo-Guardrails/issues/963))
+
+### ⚙️ Miscellaneous Tasks
+
+- Add Python 3.12 support ([#984](https://github.com/NVIDIA/NeMo-Guardrails/issues/984))
+
+## [0.12.0] - 2025-02-26
+
+### 🚀 Features
+
+- Support Output Rails Streaming ([#966](https://github.com/NVIDIA/NeMo-Guardrails/issues/966), [#1003](https://github.com/NVIDIA/NeMo-Guardrails/issues/1003))
+- Add unified output mapping for actions ([#965](https://github.com/NVIDIA/NeMo-Guardrails/issues/965))
+- Add output rails support to activefence integration ([#940](https://github.com/NVIDIA/NeMo-Guardrails/issues/940))
+- Add Prompt Security integration ([#920](https://github.com/NVIDIA/NeMo-Guardrails/issues/920))
+- Add pii masking capability to PrivateAI integration ([#901](https://github.com/NVIDIA/NeMo-Guardrails/issues/901))
+- Add embedding_params to BasicEmbeddingsIndex ([#898](https://github.com/NVIDIA/NeMo-Guardrails/issues/898))
+- Add score threshold to AnalyzerEngine ([#845](https://github.com/NVIDIA/NeMo-Guardrails/issues/845))
+
+### 🐛 Bug Fixes
+
+- Fix dependency resolution issues in AlignScore Dockerfile([#1002](https://github.com/NVIDIA/NeMo-Guardrails/issues/1002), [#982](https://github.com/NVIDIA/NeMo-Guardrails/issues/982))
+- Fix JailbreakDetect docker files([#981](https://github.com/NVIDIA/NeMo-Guardrails/issues/981), [#1001](https://github.com/NVIDIA/NeMo-Guardrails/pull/1001))
+- Fix TypeError from attempting to unpack already-unpacked dictionary. ([#959](https://github.com/NVIDIA/NeMo-Guardrails/issues/959))
+- Fix token stats usage in LLM call info. ([#953](https://github.com/NVIDIA/NeMo-Guardrails/issues/953))
+- Handle unescaped quotes in generate_value using safe_eval ([#946](https://github.com/NVIDIA/NeMo-Guardrails/issues/946))
+- Handle non-relative file paths ([#897](https://github.co/NVIDIA/NeMo-Guardrails/issues/897))
+- Set workdir to models and specify entrypoint explicitly ([#1001](https://github.com/NVIDIA/NeMo-Guardrails/pull/1001)).
+
+### 📚 Documentation
+
+- Output streaming ([#976](https://github.com/NVIDIA/NeMo-Guardrails/issues/976))
+- Fix typos with oauthtoken ([#957](https://github.com/NVIDIA/NeMo-Guardrails/issues/957))
+- Fix broken link in prompt security ([#978](https://github.com/NVIDIA/NeMo-Guardrails/issues/978))
+- Update advanced user guides per v0.11.1 doc release ([#937](https://github.com/NVIDIA/NeMo-Guardrails/issues/937))
+
+### ⚙️ Miscellaneous Tasks
+
+- Tolerate prompt in code blocks ([#1004](https://github.com/NVIDIA/NeMo-Guardrails/issues/1004))
+- Update YAML indent to use two spaces ([#1009](https://github.com/NVIDIA/NeMo-Guardrails/issues/1009))
+
+## [0.11.1] - 2025-01-16
+
+### Added
+
+- **ContentSafety**: Add ContentSafety NIM connector ([#930](https://github.com/NVIDIA/NeMo-Guardrails/pull/930)) by @prasoonvarshney
+- **TopicControl**: Add TopicControl NIM connector ([#930](https://github.com/NVIDIA/NeMo-Guardrails/pull/930)) by @makeshn
+- **JailbreakDetect**: Add jailbreak detection NIM connector ([#930](https://github.com/NVIDIA/NeMo-Guardrails/pull/930)) by @erickgalinkin
+
+## Changed
+
+- **AutoAlign Integration**: Add further enhancements and refactoring to AutoAlign integration ([#867](https://github.com/NVIDIA/NeMo-Guardrails/pull/867)) by @KimiJL
+
+## Fixed
+
+- **PrivateAI Integration**: Fix Incomplete URL substring sanitization Error ([#883](https://github.com/NVIDIA/NeMo-Guardrails/pull/883)) by @NJ-186
+
+## Documentation
+
+- **NVIDIA Blueprint**: Add Safeguarding AI Virtual Assistant NIM Blueprint NemoGuard NIMs ([#932](https://github.com/NVIDIA/NeMo-Guardrails/pull/932)) by @abodhankar
+
+- **ActiveFence Integration**: Fix flow definition in community docs ([#890](https://github.com/NVIDIA/NeMo-Guardrails/pull/890)) by @noamlevy81
 
 ## [0.11.0] - 2024-11-19
 

@@ -130,10 +130,12 @@ To get started quickly, follow the steps below.
 
 4. we use `Poetry` to manage the project dependencies. To install Poetry follow the instructions [here](https://python-poetry.org/docs/#installation):
 
+> Note: This project requires Poetry version >=1.8,<2.0. Please ensure you are using a compatible version before running any Poetry commands.
+
   Ensure you have `poetry` installed:
 
    ```bash
-   poetry -- version
+   poetry --version
    ```
 
 6. Install the dev dependencies:
@@ -142,7 +144,8 @@ To get started quickly, follow the steps below.
    poetry install --with dev
    ```
 
-   This will install pre-commit, pytest, and other development tools.
+   The preceding command installs pre-commit, pytest, and other development tools.
+   Specify `--with dev,docs` to add the dependencies for building the documentation.
 
 7. If needed, you can install extra dependencies as below:
 
@@ -157,7 +160,6 @@ To get started quickly, follow the steps below.
 
     ```bash
     poetry install --all-extras
-
     ```
 
 > **Note**: `dev` is not part of the extras but it is an optional dependency group, so you need to install it as instructed above.
@@ -166,7 +168,6 @@ To get started quickly, follow the steps below.
 
    ```
    pre-commit install
-
    ```
 
    This will ensure that the pre-commit checks, including Black, are run before each commit.

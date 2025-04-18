@@ -80,24 +80,78 @@ The meaning of the attributes is as follows:
 - `model`: the name of the model, e.g., `gpt-3.5-turbo-instruct`.
 - `parameters`: any additional parameters, e.g., `temperature`, `top_k`, etc.
 
-#### Supported LLM Models
+#### Supported LLM Providers
 
 You can use any LLM provider that is supported by LangChain, e.g., `ai21`, `aleph_alpha`, `anthropic`, `anyscale`, `azure`, `cohere`, `huggingface_endpoint`, `huggingface_hub`, `openai`, `self_hosted`, `self_hosted_hugging_face`. Check out the LangChain official documentation for the full list.
+
+In addition to the above LangChain providers, connecting to [Nvidia NIMs](https://docs.nvidia.com/nim/index.html) is supported using the engine `nvidia_ai_endpoints` or synonymously `nim`, for both Nvidia hosted NIMs (accessible through an Nvidia AI Enterprise license) and for locally downloaded and elf-hosted NIM containers.
 
 ```{note}
 To use any of the providers, you must install additional packages; when you first try to use a configuration with a new provider, you typically receive an error from LangChain that instructs which packages you should install.
 ```
 
 ```{important}
-Although you can instantiate any of the previously mentioned LLM providers, depending on the capabilities of the model, the NeMo Guardrails toolkit works better with some providers than others. The toolkit includes prompts that have been optimized for certain types of models, such as `openai` and `nemollm`. For others, you can optimize the prompts yourself following the information in the [LLM Prompts](#llm-prompts) section.
+Although you can instantiate any of the previously mentioned LLM providers, depending on the capabilities of the model, the NeMo Guardrails toolkit works better with some providers than others. The toolkit includes prompts that have been optimized for certain types of models, such as models provided by`openai` or `llama3` models. For others, you can optimize the prompts yourself following the information in the [LLM Prompts](#llm-prompts) section.
 ```
+
+#### Exploring Available Providers
+
+To help you explore and select the right LLM provider for your needs, NeMo Guardrails provides the `find-providers` command. This command offers an interactive interface to discover available providers:
+
+```bash
+nemoguardrails find-providers [--list]
+```
+
+The command supports two modes:
+- Interactive mode (default): Guides you through selecting a provider type (text completion or chat completion) and then shows available providers for that type
+- List mode (`--list`): Simply lists all available providers without interactive selection
+
+This can be particularly helpful when you're setting up your configuration and need to explore which providers are available and supported.
+
+For more details about the command and its usage, see the [CLI documentation](../cli.md#find-providers-command).
+
+#### Using LLMs with Reasoning Traces
+
+By default, reasoning models, such as [DeepSeek-R1](https://huggingface.co/collections/deepseek-ai/deepseek-r1-678e1e131c0169c0bc89728d), include the reasoning traces in the model response.
+DeepSeek models use `<think>` and `</think>` as tokens to identify the traces.
+
+The reasoning traces and the tokens usually interfere with NeMo Guardrails and result in falsely triggering output guardrails for safe responses.
+To use these reasoning models, you can remove the traces and tokens from the model response with a configuration like the following example.
+
+```{code-block} yaml
+:emphasize-lines: 5-
+
+models:
+  - type: main
+    engine: deepseek
+    model: deepseek-reasoner
+    reasoning_config:
+      remove_thinking_traces: True
+      start_token: "<think>"
+      end_token: "</think>"
+```
+
+The `reasoning_config` field for a model specifies the required configuration for a reasoning model that returns reasoning traces.
+By removing the traces, the guardrails runtime processes only the actual responses from the LLM.
+
+You can specify the following parameters for a reasoning model:
+
+- `remove_thinking_traces`: if the reasoning traces should be ignored (default `True`).
+- `start_token`: the start token for the reasoning process (default `<think>`).
+- `end_token`: the end token for the reasoning process (default `</think>`).
 
 #### NIM for LLMs
 
 [NVIDIA NIM](https://docs.nvidia.com/nim/index.html) is a set of easy-to-use microservices designed to accelerate the deployment of generative AI models across the cloud, data center, and workstations.
 [NVIDIA NIM for LLMs](https://docs.nvidia.com/nim/large-language-models/latest/introduction.html) brings the power of state-of-the-art LLMs to enterprise applications, providing unmatched natural language processing and understanding capabilities. [Learn more about NIMs](https://developer.nvidia.com/blog/nvidia-nim-offers-optimized-inference-microservices-for-deploying-ai-models-at-scale/).
 
-NeMo Guardrails supports connecting to a NIM as follows:
+NIMs can be self hosted, using downloadable containers, or Nvidia hosted and accessible through an Nvidia AI Enterprise (NVAIE) licesnse.
+
+NeMo Guardrails supports connecting to NIMs as follows:
+
+##### Self-hosted NIMs
+
+To connect to self-hosted NIMs, set the engine to `nim`. Also make sure the model name matches one of the model names the hosted NIM supports (you can get a list of supported models using a GET request to v1/models endpoint).
 
 ```yaml
 models:
@@ -119,11 +173,7 @@ models:
       base_url: http://localhost:8000/v1
 ```
 
-```{important}
-To use the `nim` LLM provider, install the `langchain-nvidia-ai-endpoints` package using the command `pip install langchain-nvidia-ai-endpoints`.
-```
-
-#### NVIDIA AI Endpoints
+##### NVIDIA AI Endpoints
 
 [NVIDIA AI Endpoints](https://www.nvidia.com/en-us/ai-data-science/foundation-models/) give users easy access to NVIDIA hosted API endpoints for NVIDIA AI Foundation Models such as Llama 3, Mixtral 8x7B, and Stable Diffusion.
 These models, hosted on the [NVIDIA API catalog](https://build.nvidia.com/), are optimized, tested, and hosted on the NVIDIA AI platform, making them fast and easy to evaluate, further customize, and seamlessly run at peak performance on any accelerated stack.
@@ -133,7 +183,7 @@ To use an LLM model through the NVIDIA AI Endpoints, use the following model con
 ```yaml
 models:
   - type: main
-    engine: nvidia_ai_endpoints
+    engine: nim
     model: <MODEL_NAME>
 ```
 
@@ -142,12 +192,12 @@ For example, to use the `llama3-8b-instruct` model, use the following model conf
 ```yaml
 models:
   - type: main
-    engine: nvidia_ai_endpoints
+    engine: nim
     model: meta/llama3-8b-instruct
 ```
 
 ```{important}
-To use the `nvidia_ai_endpoints` LLM provider, you must install the `langchain-nvidia-ai-endpoints` package using the command `pip install langchain-nvidia-ai-endpoints`, and configure a valid `NVIDIA_API_KEY`.
+To use the `nvidia_ai_endpoints` or `nim` LLM provider, you must install the `langchain-nvidia-ai-endpoints` package using the command `pip install langchain-nvidia-ai-endpoints`, and configure a valid `NVIDIA_API_KEY`.
 ```
 
 For further information, see the [user guide](./llm/nvidia-ai-endpoints/README.md).
@@ -162,44 +212,6 @@ models:
     parameters:
       base_url: http://your_base_url
 ```
-
-#### NeMo LLM Service
-
-In addition to the LLM providers supported by LangChain, NeMo Guardrails also supports NeMo LLM Service. For example, to use the GPT-43B-905 model as the main LLM, you should use the following configuration:
-
-```yaml
-models:
-  - type: main
-    engine: nemollm
-    model: gpt-43b-905
-```
-
-You can also use customized NeMo LLM models for specific tasks, e.g., self-checking the user input or the bot output. For example:
-
-```yaml
-models:
-  # ...
-  - type: self_check_input
-    engine: nemollm
-    model: gpt-43b-002
-    parameters:
-      tokens_to_generate: 10
-      customization_id: 6e5361fa-f878-4f00-8bc6-d7fbaaada915
-```
-
-You can specify additional parameters when using NeMo LLM models using the `parameters` key. The supported parameters are:
-
-- `temperature`: the temperature that should be used for making the calls;
-- `api_host`: points to the NeMo LLM Service host (default '<https://api.llm.ngc.nvidia.com>');
-- `api_key`: the NeMo LLM Service key that should be used;
-- `organization_id`: the NeMo LLM Service organization ID that should be used;
-- `tokens_to_generate`: the maximum number of tokens to generate;
-- `stop`: the list of stop words that should be used;
-- `customization_id`: if a customization is used, the id should be specified.
-
-The `api_host`, `api_key`, and `organization_id` are fetched automatically from the environment variables `NGC_API_HOST`, `NGC_API_KEY`, and `NGC_ORGANIZATION_ID`, respectively.
-
-For more details, please refer to the NeMo LLM Service documentation and check out the [NeMo LLM example configuration](https://github.com/NVIDIA/NeMo-Guardrails/tree/develop/examples/configs/llm/nemollm/README.md).
 
 #### TRT-LLM
 
@@ -660,6 +672,95 @@ Output rails process a bot message. The message to be processed is available in 
 
 You can deactivate output rails temporarily for the next bot message, by setting the `$skip_output_rails` context variable to `True`.
 
+#### Streaming Output Configuration
+
+By default, the response from an output rail is synchronous.
+You can enable streaming to begin receiving responses from the output rail sooner.
+
+You must set the top-level `streaming: True` field in your `config.yml` file.
+
+For each output rail, add the `streaming` field and configuration parameters.
+
+```yaml
+rails:
+  output:
+    - rail name
+  streaming:
+    chunk_size: 200
+    context_size: 50
+    stream_first: True
+
+streaming: True
+```
+
+When streaming is enabled, the toolkit applies output rails to chunks of tokens.
+If a rail blocks a chunk of tokens, the toolkit returns a JSON error object in the following format:
+
+```output
+{
+  "error": {
+    "message": "Blocked by <rail-name> rails.",
+    "type": "guardrails_violation",
+    "param": "<rail-name>",
+    "code": "content_blocked"
+  }
+}
+```
+
+When integrating with the OpenAI Python client, this JSON error is designed to be caught by the server code and converted to an API error following OpenAI's SSE format.
+
+The following table describes the subfields for the `streaming` field:
+
+```{list-table}
+:header-rows: 1
+
+* - Field
+  - Description
+  - Default Value
+
+* - streaming.chunk_size
+  - Specifies the number of tokens for each chunk.
+    The toolkit applies output guardrails on each chunk of tokens.
+
+    Larger values provide more meaningful information for the rail to assess,
+    but can add latency while accumulating tokens for a full chunk.
+    The risk of higher latency is especially true if you specify `stream_first: False`.
+  - `200`
+
+* - streaming.context_size
+  - Specifies the number of tokens to keep from the previous chunk to provide context and continuity in processing.
+
+    Larger values provide continuity across chunks with minimal impact on latency.
+    Small values might fail to detect cross-chunk violations.
+    Specifying approximately 25% of `chunk_size` provides a good compromise.
+  - `50`
+
+* - streaming.stream_first
+  - When set to `False`, the toolkit applies the output rails to the chunks before streaming them to the client.
+    If you set this field to `False`, you can avoid streaming chunks of blocked content.
+
+    By default, the toolkit streams the chunks as soon as possible and before applying output rails to them.
+
+  - `True`
+```
+
+The following table shows how the number of tokens, chunk size, and context size interact to trigger the number of rails invocations.
+
+```{csv-table}
+:header: Input Length, Chunk Size, Context Size, Rails Invocations
+
+512,256,64,3
+600,256,64,3
+256,256,64,1
+1024,256,64,5
+1024,256,32,5
+1024,256,32,5
+1024,128,32,11
+512,128,32,5
+```
+
+Refer to [](../getting-started/5-output-rails/README.md#streaming-output) for a code sample.
+
 ### Retrieval Rails
 
 Retrieval rails process the retrieved chunks, i.e., the `$relevant_chunks` variable.
@@ -953,7 +1054,7 @@ register_log_adapter(YourCustomAdapter, "CustomLogAdapter")
 
 #### Example: Creating a Custom Adapter
 
-Here’s a simple example of a custom adapter that logs interaction logs to a custom backend:
+Here's a simple example of a custom adapter that logs interaction logs to a custom backend:
 
 ```python
 from nemoguardrails.tracing.adapters.base import InteractionLogAdapter

@@ -15,12 +15,14 @@
 import asyncio
 import dataclasses
 import fnmatch
+import hashlib
 import importlib.resources as pkg_resources
 import json
 import os
 import random
 import re
 import uuid
+from ast import literal_eval
 from collections import namedtuple
 from datetime import datetime, timezone
 from enum import Enum
@@ -384,3 +386,134 @@ def is_ignored_by_railsignore(filename: str, ignore_patterns: str) -> bool:
             break
 
     return ignore
+
+
+def safe_eval(input_value: str) -> str:
+    """
+    Safely evaluate a string to handle unescaped quotes or invalid syntax from the async generate_value action.
+
+    Args:
+        input_value (str): The input string to evaluate.
+
+    Returns:
+        str: The evaluated and properly formatted string.
+
+    Raises:
+        ValueError: If the input cannot be safely evaluated.
+    """
+    if input_value.startswith(("'", '"')) and input_value.endswith(("'", '"')):
+        try:
+            return literal_eval(input_value)
+        except (ValueError, SyntaxError):
+            pass
+    escaped_value = input_value.replace("'", "\\'").replace('"', '\\"')
+    input_value = f"'{escaped_value}'"
+    return literal_eval(input_value)
+
+
+def compute_hash(text: str) -> str:
+    """
+    Return the hash of the given text using MD5 if available,
+    otherwise use SHA256.
+
+    Args:
+        text (str): The input text to hash.
+
+    Returns:
+        str: The hexadecimal digest of the hash.
+    """
+    try:
+        # Attempt to use MD5 by doing a dummy call.
+        hashlib.md5(b"")
+        hash_func = hashlib.md5
+    except (AttributeError, ValueError):
+        # MD5 is not available use sha256 instead
+        hash_func = hashlib.sha256
+
+    return hash_func(text.encode("utf-8")).hexdigest()
+
+
+MAX_ERROR_MESSAGE_SIZE = 400
+MAX_JSON_SIZE = 500
+MAX_PARSING_DEPTH = 2
+
+
+def check_object_depth(obj: Any, current_depth: int = 0) -> None:
+    """Check if an object's nesting depth exceeds the maximum allowed depths
+
+    Args:
+        obj: the object to check
+        current_depth: current nesting depth
+
+    Raises:
+        ValueError: if the object is too deeply nested
+    """
+
+    if current_depth > MAX_PARSING_DEPTH:
+        raise ValueError("Object too deeply nested")
+    if isinstance(obj, dict):
+        for v in obj.values():
+            check_object_depth(v, current_depth + 1)
+    elif isinstance(obj, (list, tuple)):
+        for item in obj:
+            check_object_depth(item, current_depth + 1)
+
+
+def extract_error_json(error_message: str) -> dict:
+    """Safely extracts the JSON part from the exception message
+
+    Args:
+        error_message (str): The exception message.
+
+    Returns:
+        dict: The extracted JSON part as a dictionary, or an error dictionary if extraction fails.
+    """
+
+    if len(error_message) > MAX_ERROR_MESSAGE_SIZE:
+        error_message = error_message[:MAX_ERROR_MESSAGE_SIZE] + "... (truncated)"
+
+    # OpenAI error format typically has "Error code: XXX - {...}" format
+    if " - " in error_message:
+        json_part = error_message.split(" - ", 1)[1].strip()
+
+        if not (json_part.startswith("{") and json_part.endswith("}")):
+            return {"error": {"message": error_message}}
+
+        try:
+            try:
+                return json.loads(json_part, parse_constant=lambda x: x)
+            except json.JSONDecodeError:
+                # validate before using ast.literal_eval
+                if len(json_part) < MAX_JSON_SIZE:
+                    try:
+                        import ast
+                        import re
+
+                        # looking for suspicious patterns
+                        # is it ok?
+                        if re.search(r"__[\w]+__", json_part):
+                            raise ValueError("Potentially unsafe content")
+
+                        # parse & validate depth
+                        parsed = ast.literal_eval(json_part)
+                        check_object_depth(parsed)
+                        return parsed
+                    except (SyntaxError, ValueError) as e:
+                        return {"error": {"message": f"Invalid error format: {str(e)}"}}
+
+            if len(json_part) < MAX_JSON_SIZE:
+                json_part = json_part.replace("'", '"')
+                return json.loads(json_part, parse_constant=lambda x: x)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        error_dict = {"error": {"message": error_message}}
+        if "Error code:" in error_message:
+            try:
+                code = error_message.split("Error code:", 1)[1].strip().split(" ", 1)[0]
+                error_dict["error"]["code"] = code
+            except (IndexError, ValueError):
+                pass
+        return error_dict
+    else:
+        return {"error": {"message": error_message}}
